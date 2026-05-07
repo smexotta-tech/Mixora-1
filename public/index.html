@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Mixora — Премиум инвентаризация</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="manifest.json">
+    <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root{--bg-deep:#0E0E10;--bg-graphite:#1A1A1E;--accent-amber:#D4A843;--accent-gold:#F3D078;--text-primary:#FFFFFF;--text-secondary:rgba(255,255,255,0.6);--glass-bg:rgba(255,255,255,0.05);--glass-border:rgba(255,255,255,0.1);--alert-low:rgba(212,168,67,0.15);--success-pulse:#2EE59D;}
+        *{margin:0;padding:0;box-sizing:border-box;}
+        body{background:radial-gradient(circle at 50% 0%,#1A1A1E 0%,#0E0E10 80%);font-family:'Unbounded',sans-serif;color:var(--text-primary);min-height:100vh;display:flex;justify-content:center;align-items:center;padding:16px;margin:0;}
+        .app-container{width:100%;max-width:460px;min-height:85vh;}
+        .screen{display:flex;flex-direction:column;gap:14px;}
+        .glass-card{background:var(--glass-bg);backdrop-filter:blur(25px);border:1px solid var(--glass-border);border-radius:16px;padding:16px;box-shadow:0 10px 30px rgba(0,0,0,0.5);}
+        .fade-in{animation:fadeUp 0.4s ease-out both;}
+        @keyframes fadeUp{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:translateY(0);}}
+        .logo-icon{width:36px;height:36px;background:linear-gradient(135deg,var(--accent-amber),var(--accent-gold));border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:700;color:#000;box-shadow:0 8px 16px rgba(212,168,67,0.3);}
+        .glass-input{width:100%;background:rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.15);border-radius:10px;padding:12px 14px;font-size:15px;color:white;font-family:'Unbounded',sans-serif;outline:none;transition:0.2s;}
+        .glass-input:focus{border-color:var(--accent-amber);box-shadow:0 0 12px rgba(212,168,67,0.2);}
+        select.glass-input{appearance:none;cursor:pointer;}
+        .glass-btn{background:var(--glass-bg);backdrop-filter:blur(20px);border:1px solid var(--glass-border);border-radius:12px;padding:12px 16px;color:white;font-family:'Unbounded',sans-serif;font-weight:500;font-size:13px;cursor:pointer;transition:0.2s;display:flex;align-items:center;justify-content:center;gap:6px;}
+        .glass-btn:active{transform:scale(0.96);}
+        .glass-btn.primary{background:linear-gradient(135deg,rgba(212,168,67,0.25),rgba(212,168,67,0.05));border-color:var(--accent-amber);color:var(--accent-gold);}
+        .full-width{width:100%;}
+        .input-group{margin-bottom:14px;}
+        .input-group label{display:block;color:var(--text-secondary);font-size:12px;margin-bottom:6px;}
+        .badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:10px;font-weight:500;background:rgba(212,168,67,0.2);color:var(--accent-gold);}
+        .badge.manager{background:rgba(46,229,157,0.2);color:#2EE59D;}
+        .btn-sm{padding:5px 10px;font-size:10px;border-radius:8px;border:1px solid var(--glass-border);background:rgba(255,255,255,0.05);color:var(--text-secondary);cursor:pointer;font-family:'Unbounded',sans-serif;transition:0.2s;}
+        .btn-sm.edit{color:var(--accent-gold);border-color:rgba(212,168,67,0.3);}
+        .btn-sm.danger{color:#ff6b6b;border-color:rgba(255,107,107,0.3);}
+        .bar-card{cursor:pointer;margin-bottom:12px;}
+        .bar-actions{display:flex;gap:8px;margin-top:10px;}
+        .inventory-item{margin-bottom:10px;}
+        .inventory-section{background:rgba(0,0,0,0.2);border-radius:10px;padding:10px;margin:8px 0;}
+        .inventory-section-title{font-size:12px;color:var(--text-secondary);margin-bottom:6px;display:flex;align-items:center;gap:4px;}
+        .calc-result{font-size:12px;color:rgba(255,255,255,0.4);margin-top:4px;text-align:right;}
+        .total-display{font-size:16px;font-weight:600;color:var(--accent-gold);text-align:right;margin-top:8px;}
+        .previous-display{font-size:11px;color:rgba(255,255,255,0.35);text-align:right;}
+        .item-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;}
+        .item-name{font-weight:500;font-size:15px;}
+        .unit-badge{font-size:11px;background:rgba(255,255,255,0.1);padding:3px 8px;border-radius:20px;color:var(--text-secondary);}
+        .modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.8);backdrop-filter:blur(5px);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px;}
+        .modal-content{background:var(--glass-bg);backdrop-filter:blur(30px);border:1px solid var(--glass-border);border-radius:20px;padding:24px;width:100%;max-width:400px;}
+        .select-role{display:flex;gap:10px;margin-bottom:16px;}
+        .role-option{flex:1;padding:12px;border:1px solid var(--glass-border);border-radius:12px;text-align:center;cursor:pointer;background:rgba(0,0,0,0.3);transition:0.2s;font-size:13px;color:var(--text-secondary);}
+        .role-option.active{border-color:var(--accent-amber);background:rgba(212,168,67,0.2);color:var(--accent-gold);}
+        .row{display:flex;gap:8px;align-items:center;}
+        .row .glass-input{flex:1;}
+        .row select{width:auto;min-width:80px;}
+        .warning{border-left:3px solid var(--accent-amber);background:var(--alert-low);}
+        .export-section{display:flex;gap:10px;margin-top:8px;}
+        .header{display:flex;justify-content:space-between;align-items:center;}
+        .list-group{max-height:55vh;overflow-y:auto;display:flex;flex-direction:column;gap:10px;}
+        .manager-email-hint{font-size:10px;color:var(--text-secondary);margin-top:-6px;margin-bottom:10px;text-align:center;}
+        .logout-btn{background:none;border:1px solid rgba(255,107,107,0.3);border-radius:8px;color:#ff6b6b;padding:6px 12px;font-size:10px;cursor:pointer;font-family:'Unbounded',sans-serif;}
+        .upload-area{border:2px dashed var(--glass-border);border-radius:14px;padding:20px;text-align:center;cursor:pointer;margin-bottom:12px;}
+        .upload-area.dragover{border-color:var(--accent-gold);background:rgba(212,168,67,0.1);}
+        .file-name{font-size:12px;color:var(--accent-gold);margin-top:8px;}
+        .progress-bar{width:100%;height:4px;background:rgba(255,255,255,0.1);border-radius:4px;margin-top:12px;overflow:hidden;display:none;}
+        .progress-bar-fill{height:100%;background:var(--accent-amber);border-radius:4px;transition:width 0.3s;}
+        .bartender-row{display:flex;justify-content:space-between;align-items:center;padding:12px;background:rgba(0,0,0,0.2);border-radius:10px;margin-bottom:8px;}
+        .search-box{position:relative;margin-bottom:8px;}
+        .search-box input{padding-left:36px;padding-right:36px;}
+        .search-icon{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text-secondary);font-size:16px;}
+        .clear-search{position:absolute;right:12px;top:50%;transform:translateY(-50%);color:var(--text-secondary);cursor:pointer;font-size:18px;display:none;}
+        .tabs-container{display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;margin-bottom:8px;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
+        .tabs-container::-webkit-scrollbar{display:none;}
+        .tab-btn{padding:8px 14px;border-radius:20px;font-size:11px;white-space:nowrap;cursor:pointer;transition:0.2s;background:rgba(255,255,255,0.05);border:1px solid var(--glass-border);color:var(--text-secondary);font-family:'Unbounded',sans-serif;}
+        .tab-btn.active{background:rgba(212,168,67,0.25);border-color:var(--accent-amber);color:var(--accent-gold);font-weight:500;}
+        .no-results{text-align:center;padding:30px;color:var(--text-secondary);font-size:14px;}
+    </style>
+</head>
+<body><div id="app" class="app-container"></div>
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const socket=io();
+const app=document.getElementById('app');
+let currentUser=null,currentBarId=null,currentBarName='',inventoryItems=[],myBars=[];
+let activeCategory='all',searchQuery='';
+
+const stdVolumesL=[0.33,0.5,0.7,0.75,1.0,5,10,20,30,50];
+const catNames={all:'📦 Все',alcohol:'🍸 Алкоголь',wine:'🍷 Вино',beer:'🍺 Пиво/Кеги',drinks:'🥤 Напитки',ingredients:'🧂 Ингредиенты',dishes:'🍽️ Посуда'};
+
+function volLabel(v){return v>=5?`${v} л (кег)`:`${v} л`;}
+
+// ========== ЭКРАН ВХОДА ==========
+function renderLogin(){app.innerHTML=`<div class="screen fade-in"><div class="logo-section" style="text-align:center;"><div class="logo-icon" style="margin:0 auto;">M</div><h1 style="font-weight:500;font-size:28px;margin:12px 0 4px;">Mixora</h1><p style="color:var(--text-secondary);font-size:14px;">Инвентаризация нового уровня</p></div><div class="glass-card"><h2 style="font-weight:500;margin-bottom:16px;">Вход</h2><div class="input-group"><label>Email</label><input type="email" id="loginEmail" placeholder="bar@example.com" class="glass-input"></div><div class="input-group"><label>Пароль</label><input type="password" id="loginPassword" placeholder="••••••••" class="glass-input"></div><div id="loginError" style="color:#ff6b6b;font-size:12px;margin-bottom:10px;display:none;"></div><button class="glass-btn primary full-width" id="loginBtn">Войти</button><p style="text-align:center;margin-top:14px;font-size:13px;">Нет аккаунта? <a href="#" id="goToRegister" style="color:var(--accent-gold);">Регистрация</a></p></div></div>`;document.getElementById('loginBtn').addEventListener('click',()=>{const e=document.getElementById('loginEmail').value,p=document.getElementById('loginPassword').value;if(!e||!p){document.getElementById('loginError').style.display='block';document.getElementById('loginError').innerText='Заполните все поля';return;}socket.emit('login',{email:e,password:p});});document.getElementById('goToRegister').addEventListener('click',ev=>{ev.preventDefault();renderRegister();});}
+
+// ========== ЭКРАН РЕГИСТРАЦИИ ==========
+function renderRegister(){app.innerHTML=`<div class="screen fade-in"><div class="glass-card"><h2 style="font-weight:500;margin-bottom:16px;">Регистрация</h2><div class="input-group"><label>Имя</label><input type="text" id="regName" placeholder="Алексей" class="glass-input"></div><div class="input-group"><label>Email</label><input type="email" id="regEmail" placeholder="bar@example.com" class="glass-input"></div><div class="input-group"><label>Пароль</label><input type="password" id="regPassword" placeholder="••••••••" class="glass-input"></div><label style="color:var(--text-secondary);font-size:12px;display:block;">Роль</label><div class="select-role"><div class="role-option active" data-role="bartender">🍸 Бармен</div><div class="role-option" data-role="manager">📊 Бар-менеджер</div></div><div class="input-group" id="managerEmailGroup" style="display:none;"><label>Email менеджера</label><input type="email" id="regManagerEmail" placeholder="manager@example.com" class="glass-input"><div class="manager-email-hint">Менеджер должен быть уже зарегистрирован</div></div><div id="regError" style="color:#ff6b6b;font-size:12px;margin-bottom:10px;display:none;"></div><button class="glass-btn primary full-width" id="registerBtn">Зарегистрироваться</button><p style="text-align:center;margin-top:14px;font-size:13px;">Уже есть аккаунт? <a href="#" id="goToLogin" style="color:var(--accent-gold);">Войти</a></p></div></div>`;let role='bartender';document.querySelectorAll('.role-option').forEach(o=>o.addEventListener('click',function(){document.querySelectorAll('.role-option').forEach(x=>x.classList.remove('active'));this.classList.add('active');role=this.dataset.role;document.getElementById('managerEmailGroup').style.display=role==='bartender'?'block':'none';}));document.getElementById('registerBtn').addEventListener('click',()=>{const n=document.getElementById('regName').value,e=document.getElementById('regEmail').value,p=document.getElementById('regPassword').value,me=document.getElementById('regManagerEmail')?.value||'';if(!n||!e||!p){document.getElementById('regError').style.display='block';document.getElementById('regError').innerText='Заполните все поля';return;}socket.emit('register',{name:n,email:e,password:p,role,managerEmail:me});});document.getElementById('goToLogin').addEventListener('click',ev=>{ev.preventDefault();renderLogin();});}
+
+// ========== ЭКРАН БАРОВ ==========
+function renderBarList(bars){myBars=bars||[];let h='';myBars.forEach(b=>{const d=b.last_inventory_date==='Никогда'?'Нет данных':b.last_inventory_date,cr=b.created_by===currentUser.id?'Вы':(b.created_by_name||'Неизвестно');h+=`<div class="glass-card bar-card fade-in" data-bar-id="${b.id}"><div style="display:flex;justify-content:space-between;align-items:flex-start;"><div><div style="font-weight:500;font-size:15px;">${b.name}</div><div style="color:var(--text-secondary);font-size:11px;">${b.address||'Адрес не указан'}</div><div style="color:var(--text-secondary);font-size:10px;margin-top:4px;">📋 ${d} | 👤 ${cr}</div></div><span class="badge">${b.type}</span></div><div class="bar-actions"><button class="btn-sm edit rename-btn" data-id="${b.id}" data-name="${b.name}">✏️</button><button class="btn-sm danger delete-btn" data-id="${b.id}" data-name="${b.name}">🗑️</button></div></div>`;});const rb=currentUser.role==='manager'?'<span class="badge manager" style="margin-left:8px;">Бар-менеджер</span>':'<span class="badge" style="margin-left:8px;">Бармен</span>';app.innerHTML=`<div class="screen"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;"><div style="display:flex;align-items:center;"><div class="logo-icon">M</div><div style="margin-left:10px;"><div style="font-weight:500;">${currentUser.name}</div><div style="font-size:10px;color:var(--text-secondary);">Mixora v3.1 ${rb}</div></div></div><button class="logout-btn" id="logoutBtn">🚪</button></div><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;"><h2 style="font-weight:500;font-size:20px;">Мои бары</h2>${currentUser.role==='manager'?'<button class="btn-sm edit" id="bartendersBtn">👥 Бармены</button>':''}</div><div class="list-group">${h}</div><button class="glass-btn primary full-width" id="addBarBtn" style="margin-top:14px;">➕ Добавить бар</button></div>`;document.querySelectorAll('.bar-card').forEach(c=>c.addEventListener('click',function(e){if(e.target.closest('.bar-actions'))return;socket.emit('selectBar',{barId:parseInt(this.dataset.barId)});}));document.querySelectorAll('.rename-btn').forEach(b=>b.addEventListener('click',function(e){e.stopPropagation();e.preventDefault();showRenameModal(this.dataset.id,this.dataset.name);}));document.querySelectorAll('.delete-btn').forEach(b=>b.addEventListener('click',function(e){e.stopPropagation();e.preventDefault();showDeleteBarModal(this.dataset.id,this.dataset.name);}));document.getElementById('addBarBtn').addEventListener('click',showAddBarModal);document.getElementById('logoutBtn').addEventListener('click',()=>{currentUser=null;currentBarId=null;inventoryItems=[];myBars=[];renderLogin();});if(currentUser.role==='manager')document.getElementById('bartendersBtn').addEventListener('click',showBartendersModal);}
+
+// ========== МОДАЛКИ БАРОВ ==========
+function showRenameModal(id,name){const ov=document.createElement('div');ov.className='modal-overlay fade-in';ov.innerHTML=`<div class="modal-content"><h3 style="font-weight:500;margin-bottom:14px;">Переименовать</h3><div class="input-group"><label>Название</label><input type="text" id="newName" value="${name}" class="glass-input"></div><div style="display:flex;gap:10px;"><button class="glass-btn" id="cancelRename" style="flex:1;">Отмена</button><button class="glass-btn primary" id="saveRename" style="flex:1;">Сохранить</button></div></div>`;document.body.appendChild(ov);document.getElementById('cancelRename').addEventListener('click',()=>ov.remove());ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});document.getElementById('saveRename').addEventListener('click',()=>{const n=document.getElementById('newName').value.trim();if(!n)return;socket.emit('renameBar',{barId:parseInt(id),newName:n});ov.remove();});}
+function showDeleteBarModal(id,name){const ov=document.createElement('div');ov.className='modal-overlay fade-in';ov.innerHTML=`<div class="modal-content"><h3 style="font-weight:500;margin-bottom:12px;">Удалить бар?</h3><p style="color:var(--text-secondary);font-size:13px;margin-bottom:16px;">«${name}» будет удалён безвозвратно.</p><div style="display:flex;gap:10px;"><button class="glass-btn" id="cancelDel">Отмена</button><button class="glass-btn" id="confirmDel" style="background:rgba(255,107,107,0.2);border-color:rgba(255,107,107,0.4);color:#ff6b6b;">Удалить</button></div></div>`;document.body.appendChild(ov);document.getElementById('cancelDel').addEventListener('click',()=>ov.remove());ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});document.getElementById('confirmDel').addEventListener('click',()=>{socket.emit('deleteBar',{barId:parseInt(id),userId:currentUser.id,role:currentUser.role});ov.remove();});}
+function showBartendersModal(){const ov=document.createElement('div');ov.className='modal-overlay fade-in';ov.innerHTML=`<div class="modal-content"><h3 style="font-weight:500;margin-bottom:14px;">👥 Мои бармены</h3><div id="bartendersList" style="max-height:250px;overflow-y:auto;margin-bottom:14px;"><p style="color:var(--text-secondary);font-size:12px;">Загрузка...</p></div><div class="input-group"><label>Добавить по email</label><div class="row"><input type="email" id="newBartEmail" placeholder="barman@example.com" class="glass-input"><button class="glass-btn primary" id="addBartBtn">Добавить</button></div></div><div id="bartError" style="color:#ff6b6b;font-size:11px;margin-top:6px;display:none;"></div><div id="bartSuccess" style="color:#2EE59D;font-size:11px;margin-top:6px;display:none;"></div><button class="glass-btn full-width" id="closeBart" style="margin-top:10px;">Закрыть</button></div>`;document.body.appendChild(ov);document.getElementById('closeBart').addEventListener('click',()=>ov.remove());ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});socket.emit('getMyBartenders',{managerId:currentUser.id});document.getElementById('addBartBtn').addEventListener('click',()=>{const em=document.getElementById('newBartEmail').value.trim();if(!em)return;document.getElementById('bartError').style.display='none';document.getElementById('bartSuccess').style.display='none';socket.emit('addBartender',{managerId:currentUser.id,bartenderEmail:em});});}
+function renderBartendersList(list){const el=document.getElementById('bartendersList');if(!el)return;if(!list||!list.length){el.innerHTML='<p style="color:var(--text-secondary);font-size:12px;text-align:center;">Нет барменов</p>';return;}el.innerHTML=list.map(b=>`<div class="bartender-row"><div><div style="font-weight:500;font-size:13px;">${b.name}</div><div style="color:var(--text-secondary);font-size:10px;">${b.email}</div></div><span class="badge">Бармен</span></div>`).join('');}
+function showAddBarModal(){const ov=document.createElement('div');ov.className='modal-overlay fade-in';ov.innerHTML=`<div class="modal-content"><h3 style="font-weight:500;margin-bottom:14px;">Новый бар</h3><div class="input-group"><label>Название</label><input type="text" id="barName" placeholder="Лаунж 1920" class="glass-input"></div><div class="input-group"><label>Адрес</label><input type="text" id="barAddress" placeholder="ул. Примерная, 1" class="glass-input"></div><div class="input-group"><label>Тип</label><select id="barType" class="glass-input" style="color:white;"><option value="bar">Бар</option><option value="restaurant">Ресторан</option><option value="karaoke">Караоке</option><option value="club">Клуб</option><option value="cafe">Кафе</option></select></div><div style="display:flex;gap:10px;"><button class="glass-btn" id="cancelBar">Отмена</button><button class="glass-btn primary" id="saveBar">Сохранить</button></div></div>`;document.body.appendChild(ov);document.getElementById('cancelBar').addEventListener('click',()=>ov.remove());ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});document.getElementById('saveBar').addEventListener('click',()=>{const n=document.getElementById('barName').value,a=document.getElementById('barAddress').value,t=document.getElementById('barType').value;if(!n)return;socket.emit('addBar',{name:n,address:a,type:t,userId:currentUser.id});ov.remove();});}
+
+// ========== ЭКРАН ИНВЕНТАРИЗАЦИИ ==========
+function renderInventory(){
+    let filteredItems=inventoryItems;
+    if(activeCategory!=='all')filteredItems=filteredItems.filter(i=>i.category===activeCategory);
+    if(searchQuery)filteredItems=filteredItems.filter(i=>i.name.toLowerCase().includes(searchQuery.toLowerCase()));
+
+    let itemsHtml='';
+    filteredItems.forEach(item=>{
+        const total=item.total_volume||0,prev=item.previous_total||0,isLow=prev>0&&total<prev/3;
+        const sc=item.sealed_count||0,sv=item.sealed_volume||0.7,oc=item.opened_count||0,ov_=item.opened_volume||0.7,or_=item.opened_remainder||0;
+        const sealedTotal=+(sc*sv).toFixed(3),openedTotal=+(oc*or_).toFixed(3);
+        const unit=item.unit,isLiquid=unit==='л',isWeight=unit==='кг',isDish=item.category==='dishes';
+        let sectionsHtml='';
+        if(isDish){
+            const broken=item.broken_count||0,intact=Math.max(0,(sc||0)-broken);
+            sectionsHtml=`<div class="inventory-section"><div class="inventory-section-title">🍽️ Посуда</div><div class="row"><div style="flex:1;"><label style="font-size:10px;color:var(--text-secondary);">Всего (шт)</label><input type="number" class="glass-input dish-total" value="${sc}" step="1" data-id="${item.id}"></div><div style="flex:1;"><label style="font-size:10px;color:var(--text-secondary);">Битых</label><input type="number" class="glass-input dish-broken" value="${broken}" step="1" data-id="${item.id}"></div></div><div class="calc-result">Остаток целых: ${intact} шт</div></div>`;
+        }else if(isLiquid){
+            const volOptionsL=stdVolumesL.map(v=>`<option value="${v}" ${Math.abs(sv-v)<0.01?'selected':''}>${volLabel(v)}</option>`).join('')+'<option value="custom">Свой</option>';
+            const volOptionsO=stdVolumesL.map(v=>`<option value="${v}" ${Math.abs(ov_-v)<0.01?'selected':''}>${volLabel(v)}</option>`).join('')+'<option value="custom">Свой</option>';
+            sectionsHtml=`<div class="inventory-section"><div class="inventory-section-title">📦 Закрытые</div><div class="row"><input type="number" class="glass-input sealed-count" value="${sc}" step="1" data-id="${item.id}" style="flex:1;"><select class="glass-input sealed-vol" data-id="${item.id}" style="min-width:100px;">${volOptionsL}</select></div><input type="number" class="glass-input sealed-vol-custom" value="${sv}" step="0.05" data-id="${item.id}" style="margin-top:6px;${stdVolumesL.some(v=>Math.abs(sv-v)<0.01)?'display:none;':''}"><div class="calc-result">= ${sealedTotal} л</div></div><div class="inventory-section"><div class="inventory-section-title">🍾 Вскрытые</div><div class="row"><input type="number" class="glass-input opened-count" value="${oc}" step="1" data-id="${item.id}" style="flex:1;"><select class="glass-input opened-vol" data-id="${item.id}" style="min-width:100px;">${volOptionsO}</select></div><input type="number" class="glass-input opened-vol-custom" value="${ov_}" step="0.05" data-id="${item.id}" style="margin-top:6px;${stdVolumesL.some(v=>Math.abs(ov_-v)<0.01)?'display:none;':''}"><label style="font-size:10px;color:var(--text-secondary);margin-top:6px;display:block;">Остаток в каждой (~)</label><input type="number" class="glass-input opened-rem" value="${or_}" step="0.05" data-id="${item.id}" style="text-align:right;"><div class="calc-result">= ${openedTotal} л</div></div>`;
+        }else if(isWeight){
+            sectionsHtml=`<div class="inventory-section"><div class="inventory-section-title">⚖️ Вес</div><input type="number" class="glass-input weight-total" value="${total}" step="0.1" data-id="${item.id}" style="text-align:right;"><div class="calc-result">Общий вес: ${total} кг</div></div>`;
+        }
+        itemsHtml+=`<div class="glass-card inventory-item ${isLow?'warning':''} fade-in" data-item-id="${item.id}"><div class="item-header"><span class="item-name">${item.name}</span><span class="unit-badge">${unit}</span></div>${sectionsHtml}<div class="total-display">📊 ${total} ${unit}</div><div class="previous-display">Было: ${prev} ${unit}</div><div style="display:flex;gap:6px;margin-top:8px;"><button class="btn-sm edit edit-item-btn" data-id="${item.id}" data-name="${item.name}" data-unit="${unit}" data-cat="${item.category||'alcohol'}">✏️</button><button class="btn-sm danger delete-item-btn" data-id="${item.id}" data-name="${item.name}">🗑️</button></div></div>`;
+    });
+
+    if(!itemsHtml)itemsHtml='<div class="no-results">🔍 Ничего не найдено</div>';
+
+    let tabsHtml='';
+    Object.entries(catNames).forEach(([key,name])=>{tabsHtml+=`<button class="tab-btn ${activeCategory===key?'active':''}" data-cat="${key}">${name}</button>`;});
+
+    app.innerHTML=`<div class="screen"><div class="header"><div class="logo"><div class="logo-icon">M</div><div><div style="font-weight:600;">Mixora</div><div style="font-size:10px;color:var(--text-secondary);">v3.1</div></div></div><div style="display:flex;gap:6px;"><button class="glass-btn" id="uploadBtn" style="font-size:11px;padding:8px 10px;">📤</button><button class="glass-btn" id="backBtn" style="font-size:11px;padding:8px 10px;">←</button></div></div><h2 style="font-weight:500;font-size:18px;">${currentBarName}</h2><div class="search-box"><span class="search-icon">🔍</span><input type="text" id="searchInput" class="glass-input" placeholder="Поиск по названию..." value="${searchQuery}"><span class="clear-search" id="clearSearch" style="${searchQuery?'display:block;':'display:none;'}">✕</span></div><div class="tabs-container">${tabsHtml}</div><div class="list-group">${itemsHtml}</div><button class="glass-btn full-width" id="addItemBtn" style="margin-bottom:6px;">➕ Добавить позицию</button><div class="export-section"><button class="glass-btn primary" id="exportBtn" style="flex:2;">📥 CSV</button><button class="glass-btn" id="saveBtn" style="flex:1;">💾</button></div></div>`;
+
+    // Поиск
+    const si=document.getElementById('searchInput');
+    document.getElementById('clearSearch').addEventListener('click',()=>{searchQuery='';renderInventory();});
+    si.addEventListener('input',function(){searchQuery=this.value;renderInventory();});
+    si.focus();si.setSelectionRange(si.value.length,si.value.length);
+
+    // Вкладки
+    document.querySelectorAll('.tab-btn').forEach(b=>b.addEventListener('click',function(){activeCategory=this.dataset.cat;renderInventory();}));
+
+    document.getElementById('backBtn').addEventListener('click',()=>{activeCategory='all';searchQuery='';socket.emit('getBarsList',{userId:currentUser.id,role:currentUser.role});});
+    document.getElementById('uploadBtn').addEventListener('click',showUploadModal);
+    document.getElementById('addItemBtn').addEventListener('click',showAddItemModal);
+    document.getElementById('saveBtn').addEventListener('click',saveInventory);
+    document.getElementById('exportBtn').addEventListener('click',()=>socket.emit('exportInventory',{barId:currentBarId}));
+
+    document.querySelectorAll('.sealed-count,.sealed-vol,.sealed-vol-custom,.opened-count,.opened-vol,.opened-vol-custom,.opened-rem,.dish-total,.dish-broken,.weight-total').forEach(el=>{el.addEventListener('input',function(){updateItemTotal(this.dataset.id);});});
+    document.querySelectorAll('.sealed-vol').forEach(sel=>{sel.addEventListener('change',function(){const id=this.dataset.id;const custom=document.querySelector(`.sealed-vol-custom[data-id="${id}"]`);if(this.value==='custom'){custom.style.display='block';custom.focus();}else{custom.style.display='none';custom.value=this.value;updateItemTotal(id);}});});
+    document.querySelectorAll('.opened-vol').forEach(sel=>{sel.addEventListener('change',function(){const id=this.dataset.id;const custom=document.querySelector(`.opened-vol-custom[data-id="${id}"]`);if(this.value==='custom'){custom.style.display='block';custom.focus();}else{custom.style.display='none';custom.value=this.value;updateItemTotal(id);}});});
+    document.querySelectorAll('.edit-item-btn').forEach(b=>b.addEventListener('click',function(){showEditItemModal(this.dataset.id,this.dataset.name,this.dataset.unit,this.dataset.cat);}));
+    document.querySelectorAll('.delete-item-btn').forEach(b=>b.addEventListener('click',function(){showDeleteItemModal(this.dataset.id,this.dataset.name);}));
+}
+
+function updateItemTotal(itemId){const item=inventoryItems.find(i=>i.id===parseInt(itemId));if(!item)return;const card=document.querySelector(`.inventory-item[data-item-id="${itemId}"]`);if(!card)return;if(item.category==='dishes'){const total=parseFloat(card.querySelector('.dish-total')?.value)||0;const broken=parseFloat(card.querySelector('.dish-broken')?.value)||0;item.sealed_count=total;item.broken_count=broken;item.total_volume=Math.max(0,total-broken);const cr=card.querySelector('.calc-result');if(cr)cr.innerText=`Остаток целых: ${item.total_volume} шт`;}else if(item.unit==='л'){let sc=parseFloat(card.querySelector('.sealed-count')?.value)||0;let sv=parseFloat(card.querySelector('.sealed-vol')?.value);if(isNaN(sv)||card.querySelector('.sealed-vol')?.value==='custom')sv=parseFloat(card.querySelector('.sealed-vol-custom')?.value)||0.7;let oc=parseFloat(card.querySelector('.opened-count')?.value)||0;let ov_=parseFloat(card.querySelector('.opened-vol')?.value);if(isNaN(ov_)||card.querySelector('.opened-vol')?.value==='custom')ov_=parseFloat(card.querySelector('.opened-vol-custom')?.value)||0.7;let or_=parseFloat(card.querySelector('.opened-rem')?.value)||0;item.sealed_count=sc;item.sealed_volume=sv;item.opened_count=oc;item.opened_volume=ov_;item.opened_remainder=or_;item.total_volume=+(sc*sv+oc*or_).toFixed(3);}else if(item.unit==='кг'){item.total_volume=parseFloat(card.querySelector('.weight-total')?.value)||0;}const td=card.querySelector('.total-display');if(td)td.innerText=`📊 ${item.total_volume} ${item.unit}`;}
+function saveInventory(){const items=inventoryItems.map(i=>({id:i.id,sealed_count:i.sealed_count||0,sealed_volume:i.sealed_volume||0.7,opened_count:i.opened_count||0,opened_volume:i.opened_volume||0.7,opened_remainder:i.opened_remainder||0,total_volume:i.total_volume||0,broken_count:i.broken_count||0}));socket.emit('saveInventory',{barId:currentBarId,items});const btn=document.getElementById('saveBtn');btn.innerText='✅';setTimeout(()=>{btn.innerText='💾';},1200);}
+
+function showAddItemModal(){const ov=document.createElement('div');ov.className='modal-overlay fade-in';ov.innerHTML=`<div class="modal-content"><h3 style="font-weight:500;margin-bottom:14px;">Новая позиция</h3><div class="input-group"><label>Название</label><input type="text" id="itemName" class="glass-input"></div><div class="input-group"><label>Категория</label><select id="itemCat" class="glass-input" style="color:white;">${Object.entries(catNames).filter(([k])=>k!=='all').map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select></div><div class="input-group"><label>Единица</label><select id="itemUnit" class="glass-input" style="color:white;"><option value="л">Литры</option><option value="кг">Килограммы</option><option value="шт">Штуки</option></select></div><div style="display:flex;gap:10px;"><button class="glass-btn" id="cancelItem">Отмена</button><button class="glass-btn primary" id="saveItem">Добавить</button></div></div>`;document.body.appendChild(ov);document.getElementById('cancelItem').addEventListener('click',()=>ov.remove());ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});document.getElementById('saveItem').addEventListener('click',()=>{const n=document.getElementById('itemName').value,u=document.getElementById('itemUnit').value,c=document.getElementById('itemCat').value;if(!n)return;socket.emit('addItem',{barId:currentBarId,name:n,unit:u,category:c});ov.remove();});}
+
+function showEditItemModal(id,name,unit,cat){
+    const ov=document.createElement('div');ov.className='modal-overlay fade-in';
+    ov.innerHTML=`<div class="modal-content"><h3 style="font-weight:500;margin-bottom:14px;">Редактировать</h3><div class="input-group"><label>Название</label><input type="text" id="editName" value="${name}" class="glass-input"></div><div class="input-group"><label>Категория</label><select id="editCat" class="glass-input" style="color:white;">${Object.entries(catNames).filter(([k])=>k!=='all').map(([k,v])=>`<option value="${k}" ${cat===k?'selected':''}>${v}</option>`).join('')}</select></div><div class="input-group"><label>Единица измерения</label><select id="editUnit" class="glass-input" style="color:white;"><option value="л" ${unit==='л'?'selected':''}>Литры (л)</option><option value="кг" ${unit==='кг'?'selected':''}>Килограммы (кг)</option><option value="шт" ${unit==='шт'?'selected':''}>Штуки (шт)</option></select></div><div style="display:flex;gap:10px;"><button class="glass-btn" id="cancelEdit">Отмена</button><button class="glass-btn primary" id="saveEdit">Сохранить</button></div></div>`;
+    document.body.appendChild(ov);
+    document.getElementById('cancelEdit').addEventListener('click',()=>ov.remove());
+    ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+    document.getElementById('saveEdit').addEventListener('click',()=>{
+        const n=document.getElementById('editName').value.trim();
+        const u=document.getElementById('editUnit').value;
+        const c=document.getElementById('editCat').value;
+        if(!n)return;
+        const item=inventoryItems.find(i=>i.id===parseInt(id));
+        if(!item)return;
+        if(u!==item.unit){
+            item.sealed_count=0;
+            item.sealed_volume=u==='л'?0.7:0;
+            item.opened_count=0;
+            item.opened_volume=u==='л'?0.7:0;
+            item.opened_remainder=0;
+            item.total_volume=0;
+            item.broken_count=0;
+        }
+        item.name=n;
+        item.unit=u;
+        item.category=c;
+        socket.emit('updateItem',{
+            itemId:parseInt(id),name:n,unit:u,category:c,
+            sealed_count:item.sealed_count||0,sealed_volume:item.sealed_volume||0,
+            opened_count:item.opened_count||0,opened_volume:item.opened_volume||0,
+            opened_remainder:item.opened_remainder||0,total_volume:item.total_volume||0,
+            broken_count:item.broken_count||0,barId:currentBarId
+        });
+        ov.remove();
+    });
+}
+
+function showDeleteItemModal(id,name){const ov=document.createElement('div');ov.className='modal-overlay fade-in';ov.innerHTML=`<div class="modal-content"><h3 style="font-weight:500;margin-bottom:12px;">Удалить?</h3><p style="color:var(--text-secondary);font-size:13px;margin-bottom:16px;">«${name}» будет удалена.</p><div style="display:flex;gap:10px;"><button class="glass-btn" id="cancelDelItem">Отмена</button><button class="glass-btn" id="confirmDelItem" style="background:rgba(255,107,107,0.2);border-color:rgba(255,107,107,0.4);color:#ff6b6b;">Удалить</button></div></div>`;document.body.appendChild(ov);document.getElementById('cancelDelItem').addEventListener('click',()=>ov.remove());ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});document.getElementById('confirmDelItem').addEventListener('click',()=>{socket.emit('deleteItem',{itemId:parseInt(id),barId:currentBarId});ov.remove();});}
+
+function showUploadModal(){const ov=document.createElement('div');ov.className='modal-overlay fade-in';ov.innerHTML=`<div class="modal-content"><h3 style="font-weight:500;margin-bottom:8px;">📤 Загрузить бланк</h3><p style="color:var(--text-secondary);font-size:11px;margin-bottom:12px;">Excel (.xlsx) или CSV</p><div class="upload-area" id="dropZone"><div style="font-size:36px;">📁</div><div style="font-size:13px;">Нажмите или перетащите</div><div class="file-name" id="fnDisp"></div><input type="file" id="fileInp" accept=".csv,.xlsx,.xls" style="display:none;"></div><div class="progress-bar" id="progBar"><div class="progress-bar-fill"></div></div><div id="uplErr" style="color:#ff6b6b;font-size:11px;margin:6px 0;display:none;"></div><div id="uplOk" style="color:#2EE59D;font-size:11px;margin:6px 0;display:none;"></div><div style="display:flex;gap:10px;"><button class="glass-btn" id="cancelUpl">Отмена</button><button class="glass-btn primary" id="uplBtn" disabled>Загрузить</button></div><a href="/download-template" style="display:block;text-align:center;color:var(--accent-gold);font-size:11px;margin-top:10px;text-decoration:none;">📥 Шаблон</a></div>`;document.body.appendChild(ov);let file=null;const dz=document.getElementById('dropZone'),fi=document.getElementById('fileInp'),fd=document.getElementById('fnDisp'),ub=document.getElementById('uplBtn');dz.addEventListener('click',()=>fi.click());dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('dragover');});dz.addEventListener('dragleave',()=>dz.classList.remove('dragover'));dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('dragover');if(e.dataTransfer.files.length){file=e.dataTransfer.files[0];fd.innerText=file.name;ub.disabled=false;}});fi.addEventListener('change',()=>{if(fi.files.length){file=fi.files[0];fd.innerText=file.name;ub.disabled=false;}});document.getElementById('cancelUpl').addEventListener('click',()=>ov.remove());ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});ub.addEventListener('click',async()=>{if(!file)return;const fd2=new FormData();fd2.append('file',file);fd2.append('barId',currentBarId);document.getElementById('progBar').style.display='block';document.getElementById('progBar').querySelector('.progress-bar-fill').style.width='50%';ub.disabled=true;ub.innerText='Загружаю...';try{const r=await fetch('/upload-inventory',{method:'POST',body:fd2});const j=await r.json();if(j.success){document.getElementById('uplOk').style.display='block';document.getElementById('uplOk').innerText=`✅ ${j.count} позиций!`;inventoryItems=j.items;setTimeout(()=>{ov.remove();renderInventory();},1000);}else{document.getElementById('uplErr').style.display='block';document.getElementById('uplErr').innerText='❌ '+(j.error||'Ошибка');ub.disabled=false;ub.innerText='Загрузить';}}catch(err){document.getElementById('uplErr').style.display='block';document.getElementById('uplErr').innerText='❌ Ошибка сети';ub.disabled=false;ub.innerText='Загрузить';}setTimeout(()=>{document.getElementById('progBar').style.display='none';},2000);});}
+
+// ========== СОБЫТИЯ ==========
+socket.on('loginSuccess',d=>{currentUser=d.user;renderBarList(d.bars||[]);});
+socket.on('registrationSuccess',()=>{alert('Успешно! Войдите.');renderLogin();});
+socket.on('errorMessage',m=>{alert('Ошибка: '+m);const e=document.getElementById('bartError');if(e){e.style.display='block';e.innerText=m;}});
+socket.on('successMessage',m=>{const e=document.getElementById('bartSuccess');if(e){e.style.display='block';e.innerText='✅ '+m;}});
+socket.on('barsList',b=>renderBarList(b));
+socket.on('barRenamed',()=>socket.emit('getBarsList',{userId:currentUser.id,role:currentUser.role}));
+socket.on('myBartenders',b=>renderBartendersList(b));
+socket.on('barInventory',d=>{currentBarId=d.barId;currentBarName=d.barName;inventoryItems=d.items||[];activeCategory='all';searchQuery='';renderInventory();});
+socket.on('inventoryUpdated',items=>{inventoryItems=items;renderInventory();});
+socket.on('inventorySaved',items=>{inventoryItems=items;renderInventory();});
+socket.on('exportReady',d=>{const blob=new Blob([d.csv],{type:'text/csv;charset=utf-8;'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=d.filename;document.body.appendChild(a);a.click();document.body.removeChild(a);});
+
+renderLogin();
+</script>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js');
+  });
+}
+</script>
+</body>
+</html>
