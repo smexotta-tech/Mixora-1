@@ -16,8 +16,9 @@ const server = http.createServer(app);
 const io = socketIo(server);
 app.use(express.static(path.join(__dirname, 'public')));
 const upload = multer({ dest: 'uploads/' });
-if (!fs.existsSync('uploads')) fs.mkdirSync('uploads');
+if (!fs.existsSync('uploads')) fs.mkdirSync('uploads', { recursive: true });
 
+// ========== ПОЧТА ==========
 let transporter = null;
 if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
     transporter = nodemailer.createTransport({
@@ -25,19 +26,51 @@ if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
         auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
     });
     console.log('Email настроен.');
-} else { console.log('Email ОТКЛЮЧЕН.'); }
+} else { console.log('Email ОТКЛЮЧЕН. Коды подтверждения будут в консоли.'); }
 
-try { if (fs.existsSync('mixora.db')) fs.unlinkSync('mixora.db'); } catch(e) {}
+// ========== БАЗА ДАННЫХ ==========
 const db = new Database('mixora.db');
 db.pragma('foreign_keys = ON');
 
 // Таблицы
-db.exec(`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, email TEXT UNIQUE NOT NULL, password TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'bartender')`);
-db.exec(`CREATE TABLE IF NOT EXISTS manager_bartenders (id INTEGER PRIMARY KEY AUTOINCREMENT, manager_id INTEGER NOT NULL, bartender_id INTEGER NOT NULL, created_at TEXT DEFAULT '', FOREIGN KEY(manager_id) REFERENCES users(id) ON DELETE CASCADE, FOREIGN KEY(bartender_id) REFERENCES users(id) ON DELETE CASCADE, UNIQUE(manager_id, bartender_id))`);
-db.exec(`CREATE TABLE IF NOT EXISTS bars (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, address TEXT DEFAULT '', type TEXT DEFAULT 'bar', created_by INTEGER, created_at TEXT DEFAULT '', FOREIGN KEY(created_by) REFERENCES users(id) ON DELETE SET NULL)`);
-db.exec(`CREATE TABLE IF NOT EXISTS user_bars (user_id INTEGER, bar_id INTEGER, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE, FOREIGN KEY(bar_id) REFERENCES bars(id) ON DELETE CASCADE, PRIMARY KEY(user_id, bar_id))`);
+db.exec(`CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    password TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'bartender',
+    email_verified INTEGER DEFAULT 0,
+    verification_code TEXT,
+    login_attempts INTEGER DEFAULT 0,
+    blocked_until TEXT
+)`);
+db.exec(`CREATE TABLE IF NOT EXISTS manager_bartenders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    manager_id INTEGER NOT NULL,
+    bartender_id INTEGER NOT NULL,
+    created_at TEXT DEFAULT '',
+    FOREIGN KEY(manager_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY(bartender_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(manager_id, bartender_id)
+)`);
+db.exec(`CREATE TABLE IF NOT EXISTS bars (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    address TEXT DEFAULT '',
+    type TEXT DEFAULT 'bar',
+    created_by INTEGER,
+    created_at TEXT DEFAULT '',
+    FOREIGN KEY(created_by) REFERENCES users(id) ON DELETE SET NULL
+)`);
+db.exec(`CREATE TABLE IF NOT EXISTS user_bars (
+    user_id INTEGER, bar_id INTEGER,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY(bar_id) REFERENCES bars(id) ON DELETE CASCADE,
+    PRIMARY KEY(user_id, bar_id)
+)`);
 db.exec(`CREATE TABLE IF NOT EXISTS inventory_items (
-    id INTEGER PRIMARY KEY AUTOINCREMENT, bar_id INTEGER, name TEXT NOT NULL,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    bar_id INTEGER, name TEXT NOT NULL,
     unit TEXT DEFAULT 'л', category TEXT DEFAULT 'alcohol',
     sealed_count REAL DEFAULT 0, sealed_volume REAL DEFAULT 0.7,
     opened_count REAL DEFAULT 0, opened_volume REAL DEFAULT 0.7,
@@ -45,9 +78,35 @@ db.exec(`CREATE TABLE IF NOT EXISTS inventory_items (
     previous_total REAL DEFAULT 0, broken_count INTEGER DEFAULT 0,
     FOREIGN KEY(bar_id) REFERENCES bars(id) ON DELETE CASCADE
 )`);
-db.exec(`CREATE TABLE IF NOT EXISTS inventory_dates (bar_id INTEGER, last_inventory_date TEXT, FOREIGN KEY(bar_id) REFERENCES bars(id) ON DELETE CASCADE, PRIMARY KEY(bar_id))`);
+db.exec(`CREATE TABLE IF NOT EXISTS inventory_dates (
+    bar_id INTEGER, last_inventory_date TEXT,
+    FOREIGN KEY(bar_id) REFERENCES bars(id) ON DELETE CASCADE,
+    PRIMARY KEY(bar_id)
+)`);
 
-// Шаблон с категориями
+// ========== ВАЛИДАЦИЯ ==========
+function validateEmail(email) {
+    return /^.{5,}@.+\..+$/.test(email);
+}
+function validatePassword(password) {
+    return password.length >= 6 && /[a-zA-Z]/.test(password) && /[0-9]/.test(password);
+}
+function validateName(name) {
+    return name && name.trim().length >= 2;
+}
+
+function isBlocked(user) {
+    if (!user.blocked_until) return false;
+    const now = new Date();
+    const blocked = new Date(user.blocked_until + 'Z');
+    return now < blocked;
+}
+
+function generateCode() {
+    return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+// ========== ШАБЛОН ==========
 const DEFAULT_TEMPLATE = [
     { name:'Водка', unit:'л', cat:'alcohol' }, { name:'Виски', unit:'л', cat:'alcohol' },
     { name:'Джин', unit:'л', cat:'alcohol' }, { name:'Ром', unit:'л', cat:'alcohol' },
@@ -69,9 +128,14 @@ function getBarsForUser(userId, role) {
     if (role==='manager') return db.prepare(`SELECT DISTINCT b.id,b.name,b.address,b.type,b.created_by,COALESCE(d.last_inventory_date,'Никогда') as last_inventory_date,u.name as created_by_name FROM bars b LEFT JOIN inventory_dates d ON b.id=d.bar_id LEFT JOIN users u ON b.created_by=u.id WHERE b.created_by=? OR b.created_by IN (SELECT bartender_id FROM manager_bartenders WHERE manager_id=?) ORDER BY b.name`).all(userId,userId);
     return db.prepare(`SELECT DISTINCT b.id,b.name,b.address,b.type,b.created_by,COALESCE(d.last_inventory_date,'Никогда') as last_inventory_date,u.name as created_by_name FROM bars b JOIN user_bars ub ON b.id=ub.bar_id LEFT JOIN inventory_dates d ON b.id=d.bar_id LEFT JOIN users u ON b.created_by=u.id WHERE ub.user_id=? ORDER BY b.name`).all(userId);
 }
-function sendEmail(to,subject,html) { if(!transporter)return; transporter.sendMail({from:`"Mixora" <${process.env.EMAIL_USER}>`,to,subject,html}).then(()=>console.log('Email:',to)).catch(e=>console.error(e.message)); }
+function sendEmail(to, subject, html) {
+    if (!transporter) return;
+    transporter.sendMail({ from: `"Mixora" <${process.env.EMAIL_USER}>`, to, subject, html })
+        .then(() => console.log('Email отправлен:', to))
+        .catch(e => console.error('Ошибка email:', e.message));
+}
 
-// API загрузки
+// ========== API ЗАГРУЗКИ ==========
 app.post('/upload-inventory', upload.single('file'), (req, res) => {
     try {
         if(!req.file) return res.status(400).json({error:'Нет файла'});
@@ -99,36 +163,168 @@ app.post('/upload-inventory', upload.single('file'), (req, res) => {
 });
 app.get('/download-template',(_,res)=>{res.setHeader('Content-Type','text/csv;charset=utf-8');res.setHeader('Content-Disposition','attachment;filename=Mixora_Шаблон.csv');res.send('Название,Категория,Закр.кол-во,Закр.объём,Вскр.кол-во,Вскр.остаток,Битых,Общий остаток,Ед.изм,Было\nВодка Finlandia,alcohol,3,0.7,2,0.3,0,2.7,л,3.5\nБокалы,dishes,48,0,0,0,3,45,шт,50');});
 
-// Socket.IO
-io.on('connection',socket=>{
-    console.log('+',socket.id);
-    socket.on('register',data=>{
-        try{
-            const hash=bcrypt.hashSync(data.password,10),role=data.role||'bartender';
-            const r=db.prepare('INSERT INTO users (name,email,password,role) VALUES (?,?,?,?)').run(data.name,data.email,hash,role);
-            const uid=r.lastInsertRowid;
-            if(role==='bartender'&&data.managerEmail){const m=db.prepare("SELECT id FROM users WHERE email=? AND role='manager'").get(data.managerEmail);if(m){db.prepare("INSERT OR IGNORE INTO manager_bartenders (manager_id,bartender_id,created_at) VALUES (?,?,datetime('now','localtime'))").run(m.id,uid);const bars=db.prepare('SELECT id FROM bars WHERE created_by=?').all(m.id);const lnk=db.prepare('INSERT OR IGNORE INTO user_bars (user_id,bar_id) VALUES (?,?)');for(const b of bars)lnk.run(uid,b.id);}}
-            if(role==='bartender'){const br=db.prepare("INSERT INTO bars (name,address,type,created_by,created_at) VALUES (?,?,?,?,datetime('now','localtime'))").run('Мой бар','Адрес не указан','bar',uid);db.prepare('INSERT INTO user_bars (user_id,bar_id) VALUES (?,?)').run(uid,br.lastInsertRowid);const st=db.prepare('INSERT INTO inventory_items (bar_id,name,unit,category,sealed_count,sealed_volume,opened_count,opened_volume,opened_remainder,total_volume,previous_total,broken_count) VALUES (?,?,?,?,0,0.7,0,0.7,0,0,0,0)');for(const t of DEFAULT_TEMPLATE)st.run(br.lastInsertRowid,t.name,t.unit,t.cat);}
-            socket.emit('registrationSuccess');
-        } catch(e){socket.emit('errorMessage',e.message.includes('UNIQUE')?'Email занят':'Ошибка регистрации');}
+// ========== SOCKET.IO ==========
+io.on('connection', socket => {
+    console.log('+', socket.id);
+
+    // ========== РЕГИСТРАЦИЯ (ШАГ 1: СОЗДАНИЕ НЕАКТИВНОГО АККАУНТА) ==========
+    socket.on('register', data => {
+        // Бэкенд-валидация
+        if (!validateEmail(data.email)) return socket.emit('errorMessage', 'Некорректный email.');
+        if (!validatePassword(data.password)) return socket.emit('errorMessage', 'Пароль должен быть не менее 6 символов, содержать буквы и цифры.');
+        if (!validateName(data.name)) return socket.emit('errorMessage', 'Имя должно содержать минимум 2 символа.');
+
+        try {
+            const hash = bcrypt.hashSync(data.password, 10);
+            const role = data.role || 'bartender';
+            const code = generateCode();
+
+            // Проверяем, не занят ли email
+            const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(data.email);
+            if (existing) return socket.emit('errorMessage', 'Пользователь с таким email уже существует.');
+
+            db.prepare('INSERT INTO users (name, email, password, role, email_verified, verification_code) VALUES (?, ?, ?, ?, 0, ?)')
+                .run(data.name, data.email, hash, role, code);
+
+            // Отправка кода
+            if (transporter) {
+                sendEmail(data.email, 'Mixora — Код подтверждения',
+                    `<h2>Добро пожаловать в Mixora!</h2><p>Ваш код подтверждения: <b style="font-size:24px;color:#D4A843;">${code}</b></p><p>Введите его в приложении для активации аккаунта.</p>`);
+                socket.emit('verificationRequired', { email: data.email, message: 'Код отправлен на почту.' });
+            } else {
+                console.log(`\n=== КОД ПОДТВЕРЖДЕНИЯ ДЛЯ ${data.email}: ${code} ===\n`);
+                socket.emit('verificationRequired', { email: data.email, message: 'Сервер без почты. Код в консоли сервера.' });
+            }
+        } catch (e) {
+            socket.emit('errorMessage', 'Ошибка регистрации.');
+        }
     });
-    socket.on('login',data=>{const u=db.prepare('SELECT * FROM users WHERE email=?').get(data.email);if(!u||!bcrypt.compareSync(data.password,u.password)){socket.emit('errorMessage','Неверный email или пароль');return;}socket.emit('loginSuccess',{user:{id:u.id,name:u.name,email:u.email,role:u.role},bars:getBarsForUser(u.id,u.role)});});
-    socket.on('getBarsList',d=>socket.emit('barsList',getBarsForUser(d.userId,d.role)));
-    socket.on('addBar',data=>{const r=db.prepare("INSERT INTO bars (name,address,type,created_by,created_at) VALUES (?,?,?,?,datetime('now','localtime'))").run(data.name,data.address,data.type,data.userId);const barId=r.lastInsertRowid;db.prepare('INSERT OR IGNORE INTO user_bars (user_id,bar_id) VALUES (?,?)').run(data.userId,barId);const st=db.prepare('INSERT INTO inventory_items (bar_id,name,unit,category,sealed_count,sealed_volume,opened_count,opened_volume,opened_remainder,total_volume,previous_total,broken_count) VALUES (?,?,?,?,0,0.7,0,0.7,0,0,0,0)');for(const t of DEFAULT_TEMPLATE)st.run(barId,t.name,t.unit,t.cat);const u=db.prepare('SELECT role FROM users WHERE id=?').get(data.userId);socket.emit('barsList',getBarsForUser(data.userId,u.role));});
-    socket.on('renameBar',data=>{db.prepare('UPDATE bars SET name=? WHERE id=?').run(data.newName,data.barId);socket.emit('barRenamed',data);});
-    socket.on('deleteBar',data=>{db.prepare('DELETE FROM bars WHERE id=?').run(data.barId);socket.emit('barsList',getBarsForUser(data.userId,data.role));});
-    socket.on('getMyBartenders',data=>{socket.emit('myBartenders',db.prepare('SELECT u.id,u.name,u.email FROM users u JOIN manager_bartenders mb ON u.id=mb.bartender_id WHERE mb.manager_id=? ORDER BY u.name').all(data.managerId));});
-    socket.on('addBartender',data=>{const b=db.prepare("SELECT id,name,email FROM users WHERE email=? AND role='bartender'").get(data.bartenderEmail);if(!b){socket.emit('errorMessage','Бармен не найден');return;}if(db.prepare('SELECT id FROM manager_bartenders WHERE manager_id=? AND bartender_id=?').get(data.managerId,b.id)){socket.emit('errorMessage','Уже в команде');return;}db.prepare("INSERT INTO manager_bartenders (manager_id,bartender_id,created_at) VALUES (?,?,datetime('now','localtime'))").run(data.managerId,b.id);const bars=db.prepare('SELECT id FROM bars WHERE created_by=?').all(data.managerId);const lnk=db.prepare('INSERT OR IGNORE INTO user_bars (user_id,bar_id) VALUES (?,?)');for(const bar of bars)lnk.run(b.id,bar.id);const m=db.prepare('SELECT name FROM users WHERE id=?').get(data.managerId);sendEmail(b.email,'🍸 Вас добавили в Mixora!',`<h2>Привет, ${b.name}!</h2><p>Менеджер <b>${m.name}</b> добавил вас в команду.</p><p>Войдите: <a href="http://localhost:3000">Mixora</a></p>`);socket.emit('myBartenders',db.prepare('SELECT u.id,u.name,u.email FROM users u JOIN manager_bartenders mb ON u.id=mb.bartender_id WHERE mb.manager_id=? ORDER BY u.name').all(data.managerId));socket.emit('successMessage',`Бармен ${b.name} добавлен!`);});
-    socket.on('selectBar',data=>{const bar=db.prepare('SELECT * FROM bars WHERE id=?').get(data.barId);const items=db.prepare('SELECT * FROM inventory_items WHERE bar_id=? ORDER BY category, name').all(data.barId);socket.emit('barInventory',{barId:data.barId,barName:bar.name,items});});
-    socket.on('addItem',data=>{db.prepare('INSERT INTO inventory_items (bar_id,name,unit,category,sealed_count,sealed_volume,opened_count,opened_volume,opened_remainder,total_volume,previous_total,broken_count) VALUES (?,?,?,?,0,0.7,0,0.7,0,0,0,0)').run(data.barId,data.name,data.unit,data.category||'alcohol');socket.emit('inventoryUpdated',db.prepare('SELECT * FROM inventory_items WHERE bar_id=? ORDER BY category, name').all(data.barId));});
-    socket.on('updateItem',data=>{db.prepare('UPDATE inventory_items SET name=?,unit=?,category=?,sealed_count=?,sealed_volume=?,opened_count=?,opened_volume=?,opened_remainder=?,total_volume=?,broken_count=? WHERE id=?').run(data.name,data.unit,data.category||'alcohol',data.sealed_count||0,data.sealed_volume||0.7,data.opened_count||0,data.opened_volume||0.7,data.opened_remainder||0,data.total_volume||0,data.broken_count||0,data.itemId);socket.emit('inventoryUpdated',db.prepare('SELECT * FROM inventory_items WHERE bar_id=? ORDER BY category, name').all(data.barId));});
-    socket.on('deleteItem',data=>{db.prepare('DELETE FROM inventory_items WHERE id=?').run(data.itemId);socket.emit('inventoryUpdated',db.prepare('SELECT * FROM inventory_items WHERE bar_id=? ORDER BY category, name').all(data.barId));});
-    socket.on('saveInventory',data=>{const st=db.prepare('UPDATE inventory_items SET sealed_count=?,sealed_volume=?,opened_count=?,opened_volume=?,opened_remainder=?,total_volume=?,broken_count=? WHERE id=?');db.transaction(()=>{for(const i of data.items)st.run(i.sealed_count||0,i.sealed_volume||0.7,i.opened_count||0,i.opened_volume||0.7,i.opened_remainder||0,i.total_volume||0,i.broken_count||0,i.id);})();db.prepare('UPDATE inventory_items SET previous_total=total_volume WHERE bar_id=?').run(data.barId);db.prepare("INSERT OR REPLACE INTO inventory_dates (bar_id,last_inventory_date) VALUES (?,datetime('now','localtime'))").run(data.barId);socket.emit('inventorySaved',db.prepare('SELECT * FROM inventory_items WHERE bar_id=? ORDER BY category, name').all(data.barId));});
-    socket.on('exportInventory',data=>{const items=db.prepare('SELECT name,category,sealed_count,sealed_volume,opened_count,opened_remainder,broken_count,total_volume,unit,previous_total FROM inventory_items WHERE bar_id=? ORDER BY category, name').all(data.barId);const bar=db.prepare('SELECT name FROM bars WHERE id=?').get(data.barId);const csv=new Parser({fields:['name','category','sealed_count','sealed_volume','opened_count','opened_remainder','broken_count','total_volume','unit','previous_total']}).parse(items);socket.emit('exportReady',{csv,filename:`Mixora_${bar.name}_${new Date().toISOString().slice(0,10)}.csv`});});
-    socket.on('disconnect',()=>console.log('-',socket.id));
+
+    // ========== ПОДТВЕРЖДЕНИЕ EMAIL ==========
+    socket.on('verifyEmail', data => {
+        const user = db.prepare('SELECT * FROM users WHERE email = ? AND email_verified = 0').get(data.email);
+        if (!user) return socket.emit('errorMessage', 'Пользователь не найден или уже подтверждён.');
+        if (user.verification_code !== data.code) return socket.emit('errorMessage', 'Неверный код подтверждения.');
+
+        db.prepare('UPDATE users SET email_verified = 1, verification_code = NULL WHERE id = ?').run(user.id);
+
+        // Создаём бар для bartender
+        if (user.role === 'bartender') {
+            const br = db.prepare("INSERT INTO bars (name,address,type,created_by,created_at) VALUES (?,?,?,?,datetime('now','localtime'))")
+                .run('Мой бар', 'Адрес не указан', 'bar', user.id);
+            db.prepare('INSERT INTO user_bars (user_id,bar_id) VALUES (?,?)').run(user.id, br.lastInsertRowid);
+            const st = db.prepare('INSERT INTO inventory_items (bar_id,name,unit,category,sealed_count,sealed_volume,opened_count,opened_volume,opened_remainder,total_volume,previous_total,broken_count) VALUES (?,?,?,?,0,0.7,0,0.7,0,0,0,0)');
+            for (const t of DEFAULT_TEMPLATE) st.run(br.lastInsertRowid, t.name, t.unit, t.cat);
+        }
+        socket.emit('registrationSuccess');
+    });
+
+    // ========== ВХОД ==========
+    socket.on('login', data => {
+        const user = db.prepare('SELECT * FROM users WHERE email = ?').get(data.email);
+        if (!user) return socket.emit('errorMessage', 'Неверный email или пароль.');
+
+        // Проверка блокировки
+        if (isBlocked(user)) {
+            const until = new Date(user.blocked_until + 'Z');
+            const mins = Math.ceil((until - new Date()) / 60000);
+            return socket.emit('errorMessage', `Аккаунт заблокирован. Попробуйте через ${mins} мин.`);
+        }
+
+        // Проверка подтверждения email
+        if (!user.email_verified) return socket.emit('errorMessage', 'Email не подтверждён. Проверьте почту.');
+
+        // Авто-вход по сессии
+        if (data.savedSession && user) {
+            db.prepare('UPDATE users SET login_attempts = 0, blocked_until = NULL WHERE id = ?').run(user.id);
+            return socket.emit('loginSuccess', {
+                user: { id: user.id, name: user.name, email: user.email, role: user.role },
+                bars: getBarsForUser(user.id, user.role)
+            });
+        }
+
+        // Проверка пароля
+        if (!bcrypt.compareSync(data.password, user.password)) {
+            const attempts = (user.login_attempts || 0) + 1;
+            if (attempts >= 5) {
+                db.prepare("UPDATE users SET login_attempts = ?, blocked_until = datetime('now', '+15 minutes') WHERE id = ?").run(attempts, user.id);
+                return socket.emit('errorMessage', 'Аккаунт заблокирован на 15 минут из-за множества неверных попыток.');
+            }
+            db.prepare('UPDATE users SET login_attempts = ? WHERE id = ?').run(attempts, user.id);
+            return socket.emit('errorMessage', `Неверный пароль. Осталось попыток: ${5 - attempts}`);
+        }
+
+        // Успешный вход
+        db.prepare('UPDATE users SET login_attempts = 0, blocked_until = NULL WHERE id = ?').run(user.id);
+        socket.emit('loginSuccess', {
+            user: { id: user.id, name: user.name, email: user.email, role: user.role },
+            bars: getBarsForUser(user.id, user.role)
+        });
+    });
+
+    socket.on('getBarsList', d => socket.emit('barsList', getBarsForUser(d.userId, d.role)));
+    socket.on('addBar', data => {
+        const r = db.prepare("INSERT INTO bars (name,address,type,created_by,created_at) VALUES (?,?,?,?,datetime('now','localtime'))")
+            .run(data.name, data.address, data.type, data.userId);
+        const barId = r.lastInsertRowid;
+        db.prepare('INSERT OR IGNORE INTO user_bars (user_id,bar_id) VALUES (?,?)').run(data.userId, barId);
+        const st = db.prepare('INSERT INTO inventory_items (bar_id,name,unit,category,sealed_count,sealed_volume,opened_count,opened_volume,opened_remainder,total_volume,previous_total,broken_count) VALUES (?,?,?,?,0,0.7,0,0.7,0,0,0,0)');
+        for (const t of DEFAULT_TEMPLATE) st.run(barId, t.name, t.unit, t.cat);
+        const u = db.prepare('SELECT role FROM users WHERE id=?').get(data.userId);
+        socket.emit('barsList', getBarsForUser(data.userId, u.role));
+    });
+    socket.on('renameBar', data => { db.prepare('UPDATE bars SET name=? WHERE id=?').run(data.newName, data.barId); socket.emit('barRenamed', data); });
+    socket.on('deleteBar', data => { db.prepare('DELETE FROM bars WHERE id=?').run(data.barId); socket.emit('barsList', getBarsForUser(data.userId, data.role)); });
+    socket.on('getMyBartenders', data => { socket.emit('myBartenders', db.prepare('SELECT u.id,u.name,u.email FROM users u JOIN manager_bartenders mb ON u.id=mb.bartender_id WHERE mb.manager_id=? ORDER BY u.name').all(data.managerId)); });
+    socket.on('addBartender', data => {
+        const b = db.prepare("SELECT id,name,email FROM users WHERE email=? AND role='bartender'").get(data.bartenderEmail);
+        if (!b) { socket.emit('errorMessage', 'Бармен не найден'); return; }
+        if (db.prepare('SELECT id FROM manager_bartenders WHERE manager_id=? AND bartender_id=?').get(data.managerId, b.id)) { socket.emit('errorMessage', 'Уже в команде'); return; }
+        db.prepare("INSERT INTO manager_bartenders (manager_id,bartender_id,created_at) VALUES (?,?,datetime('now','localtime'))").run(data.managerId, b.id);
+        const bars = db.prepare('SELECT id FROM bars WHERE created_by=?').all(data.managerId);
+        const lnk = db.prepare('INSERT OR IGNORE INTO user_bars (user_id,bar_id) VALUES (?,?)');
+        for (const bar of bars) lnk.run(b.id, bar.id);
+        const m = db.prepare('SELECT name FROM users WHERE id=?').get(data.managerId);
+        sendEmail(b.email, '🍸 Вас добавили в Mixora!', `<h2>Привет, ${b.name}!</h2><p>Менеджер <b>${m.name}</b> добавил вас в команду.</p>`);
+        socket.emit('myBartenders', db.prepare('SELECT u.id,u.name,u.email FROM users u JOIN manager_bartenders mb ON u.id=mb.bartender_id WHERE mb.manager_id=? ORDER BY u.name').all(data.managerId));
+        socket.emit('successMessage', `Бармен ${b.name} добавлен!`);
+    });
+    socket.on('selectBar', data => {
+        const bar = db.prepare('SELECT * FROM bars WHERE id=?').get(data.barId);
+        const items = db.prepare('SELECT * FROM inventory_items WHERE bar_id=? ORDER BY category, name').all(data.barId);
+        socket.emit('barInventory', { barId: data.barId, barName: bar.name, items });
+    });
+    socket.on('addItem', data => {
+        db.prepare('INSERT INTO inventory_items (bar_id,name,unit,category,sealed_count,sealed_volume,opened_count,opened_volume,opened_remainder,total_volume,previous_total,broken_count) VALUES (?,?,?,?,0,0.7,0,0.7,0,0,0,0)')
+            .run(data.barId, data.name, data.unit, data.category || 'alcohol');
+        socket.emit('inventoryUpdated', db.prepare('SELECT * FROM inventory_items WHERE bar_id=? ORDER BY category, name').all(data.barId));
+    });
+    socket.on('updateItem', data => {
+        db.prepare('UPDATE inventory_items SET name=?,unit=?,category=?,sealed_count=?,sealed_volume=?,opened_count=?,opened_volume=?,opened_remainder=?,total_volume=?,broken_count=? WHERE id=?')
+            .run(data.name, data.unit, data.category || 'alcohol', data.sealed_count || 0, data.sealed_volume || 0.7, data.opened_count || 0, data.opened_volume || 0.7, data.opened_remainder || 0, data.total_volume || 0, data.broken_count || 0, data.itemId);
+        socket.emit('inventoryUpdated', db.prepare('SELECT * FROM inventory_items WHERE bar_id=? ORDER BY category, name').all(data.barId));
+    });
+    socket.on('deleteItem', data => {
+        db.prepare('DELETE FROM inventory_items WHERE id=?').run(data.itemId);
+        socket.emit('inventoryUpdated', db.prepare('SELECT * FROM inventory_items WHERE bar_id=? ORDER BY category, name').all(data.barId));
+    });
+    socket.on('saveInventory', data => {
+        const st = db.prepare('UPDATE inventory_items SET sealed_count=?,sealed_volume=?,opened_count=?,opened_volume=?,opened_remainder=?,total_volume=?,broken_count=? WHERE id=?');
+        db.transaction(() => { for (const i of data.items) st.run(i.sealed_count || 0, i.sealed_volume || 0.7, i.opened_count || 0, i.opened_volume || 0.7, i.opened_remainder || 0, i.total_volume || 0, i.broken_count || 0, i.id); })();
+        db.prepare('UPDATE inventory_items SET previous_total=total_volume WHERE bar_id=?').run(data.barId);
+        db.prepare("INSERT OR REPLACE INTO inventory_dates (bar_id,last_inventory_date) VALUES (?,datetime('now','localtime'))").run(data.barId);
+        socket.emit('inventorySaved', db.prepare('SELECT * FROM inventory_items WHERE bar_id=? ORDER BY category, name').all(data.barId));
+    });
+    socket.on('exportInventory', data => {
+        const items = db.prepare('SELECT name,category,sealed_count,sealed_volume,opened_count,opened_remainder,broken_count,total_volume,unit,previous_total FROM inventory_items WHERE bar_id=? ORDER BY category, name').all(data.barId);
+        const bar = db.prepare('SELECT name FROM bars WHERE id=?').get(data.barId);
+        const csv = new Parser({ fields: ['name', 'category', 'sealed_count', 'sealed_volume', 'opened_count', 'opened_remainder', 'broken_count', 'total_volume', 'unit', 'previous_total'] }).parse(items);
+        socket.emit('exportReady', { csv, filename: `Mixora_${bar.name}_${new Date().toISOString().slice(0, 10)}.csv` });
+    });
+    socket.on('disconnect', () => console.log('-', socket.id));
 });
-server.listen(3000, '0.0.0.0', () => {
-    console.log('Mixora запущен:');
-    console.log('Локально: http://localhost:3000');
-    console.log('По сети:  http://192.168.0.225:3000');
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, '0.0.0.0', () => {
+    console.log('Mixora запущен на порту ' + PORT);
 });
