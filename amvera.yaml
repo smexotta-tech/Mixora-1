@@ -1,0 +1,17 @@
+meta:
+  version: "1"
+  runtime: node
+  runtime_version: "20"
+  tool: npm
+
+build:
+  command: npm install
+
+run:
+  command: npm start
+  port: 3000
+  persistenceMount: /data
+
+resources:
+  cpu: 0.1
+  memory: 256
