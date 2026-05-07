@@ -18,19 +18,13 @@ const io = socketIo(server);
 
 // ========== RATE LIMIT ==========
 const generalLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 минут
+    windowMs: 15 * 60 * 1000,
     max: 200,
     message: { error: 'Слишком много запросов. Попробуйте позже.' },
     standardHeaders: true,
     legacyHeaders: false
 });
 app.use(generalLimiter);
-
-const registerLimiter = rateLimit({
-    windowMs: 60 * 60 * 1000, // 1 час
-    max: 5,
-    message: { error: 'Слишком много регистраций. Попробуйте через час.' }
-});
 
 const uploadLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
@@ -59,6 +53,16 @@ if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
 // ========== БАЗА ДАННЫХ ==========
 const db = new Database('mixora.db');
 db.pragma('foreign_keys = ON');
+
+// ===== ВРЕМЕННО: СБРОС БАЗЫ (УДАЛИТЬ ПОСЛЕ ПЕРВОГО ЗАПУСКА) =====
+db.exec(`DROP TABLE IF EXISTS users`);
+db.exec(`DROP TABLE IF EXISTS bars`);
+db.exec(`DROP TABLE IF EXISTS user_bars`);
+db.exec(`DROP TABLE IF EXISTS inventory_items`);
+db.exec(`DROP TABLE IF EXISTS inventory_dates`);
+db.exec(`DROP TABLE IF EXISTS manager_bartenders`);
+console.log('База сброшена. После успешной регистрации удали этот блок!');
+// ===== КОНЕЦ ВРЕМЕННОГО БЛОКА =====
 
 // Таблицы
 db.exec(`CREATE TABLE IF NOT EXISTS users (
@@ -199,7 +203,6 @@ io.on('connection', socket => {
     const clientIp = socket.handshake.address;
     console.log(`+ ${socket.id} (${clientIp})`);
 
-    // ========== РЕГИСТРАЦИЯ ==========
     socket.on('register', data => {
         if (!validateEmail(data.email)) return socket.emit('errorMessage', 'Некорректный email.');
         if (!validatePassword(data.password)) return socket.emit('errorMessage', 'Пароль: мин. 6 символов, буквы + цифры.');
@@ -226,11 +229,11 @@ io.on('connection', socket => {
             }
             logAttempt(data.email, clientIp, true);
         } catch (e) {
+            console.error('Ошибка регистрации:', e.message);
             socket.emit('errorMessage', 'Ошибка регистрации.');
         }
     });
 
-    // ========== ПОДТВЕРЖДЕНИЕ EMAIL ==========
     socket.on('verifyEmail', data => {
         const user = db.prepare('SELECT * FROM users WHERE email = ? AND email_verified = 0').get(data.email);
         if (!user) return socket.emit('errorMessage', 'Пользователь не найден или уже подтверждён.');
@@ -248,7 +251,6 @@ io.on('connection', socket => {
         socket.emit('registrationSuccess');
     });
 
-    // ========== ВХОД ==========
     socket.on('login', data => {
         const user = db.prepare('SELECT * FROM users WHERE email = ?').get(data.email);
         if (!user) {
