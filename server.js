@@ -10,11 +10,39 @@ const multer = require('multer');
 const xlsx = require('xlsx');
 const fs = require('fs');
 const nodemailer = require('nodemailer');
+const rateLimit = require('express-rate-limit');
 
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server);
+
+// ========== RATE LIMIT ==========
+const generalLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 минут
+    max: 200,
+    message: { error: 'Слишком много запросов. Попробуйте позже.' },
+    standardHeaders: true,
+    legacyHeaders: false
+});
+app.use(generalLimiter);
+
+const registerLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000, // 1 час
+    max: 5,
+    message: { error: 'Слишком много регистраций. Попробуйте через час.' }
+});
+
+const uploadLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    message: { error: 'Слишком много загрузок. Попробуйте позже.' }
+});
+
+// ========== СТАТИКА И ЗАЩИТА БАЗЫ ==========
 app.use(express.static(path.join(__dirname, 'public')));
+app.use('/mixora.db', (req, res) => res.status(403).send('Доступ запрещён'));
+app.use('/uploads', (req, res) => res.status(403).send('Доступ запрещён'));
+
 const upload = multer({ dest: 'uploads/' });
 if (!fs.existsSync('uploads')) fs.mkdirSync('uploads', { recursive: true });
 
@@ -92,18 +120,21 @@ function validatePassword(password) {
     return password.length >= 6 && /[a-zA-Z]/.test(password) && /[0-9]/.test(password);
 }
 function validateName(name) {
-    return name && name.trim().length >= 2;
+    return name && name.trim().length >= 2 && name.trim().length <= 50;
 }
-
+function escapeHtml(str) {
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
 function isBlocked(user) {
     if (!user.blocked_until) return false;
-    const now = new Date();
-    const blocked = new Date(user.blocked_until + 'Z');
-    return now < blocked;
+    return new Date() < new Date(user.blocked_until + 'Z');
 }
-
 function generateCode() {
     return Math.floor(100000 + Math.random() * 900000).toString();
+}
+function logAttempt(email, ip, success) {
+    const status = success ? 'УСПЕХ' : 'НЕУДАЧА';
+    console.log(`[${new Date().toISOString()}] ${status} | Email: ${email} | IP: ${ip}`);
 }
 
 // ========== ШАБЛОН ==========
@@ -136,7 +167,7 @@ function sendEmail(to, subject, html) {
 }
 
 // ========== API ЗАГРУЗКИ ==========
-app.post('/upload-inventory', upload.single('file'), (req, res) => {
+app.post('/upload-inventory', uploadLimiter, upload.single('file'), (req, res) => {
     try {
         if(!req.file) return res.status(400).json({error:'Нет файла'});
         const barId=parseInt(req.body.barId); if(!barId) return res.status(400).json({error:'Нет barId'});
@@ -165,36 +196,35 @@ app.get('/download-template',(_,res)=>{res.setHeader('Content-Type','text/csv;ch
 
 // ========== SOCKET.IO ==========
 io.on('connection', socket => {
-    console.log('+', socket.id);
+    const clientIp = socket.handshake.address;
+    console.log(`+ ${socket.id} (${clientIp})`);
 
-    // ========== РЕГИСТРАЦИЯ (ШАГ 1: СОЗДАНИЕ НЕАКТИВНОГО АККАУНТА) ==========
+    // ========== РЕГИСТРАЦИЯ ==========
     socket.on('register', data => {
-        // Бэкенд-валидация
         if (!validateEmail(data.email)) return socket.emit('errorMessage', 'Некорректный email.');
-        if (!validatePassword(data.password)) return socket.emit('errorMessage', 'Пароль должен быть не менее 6 символов, содержать буквы и цифры.');
-        if (!validateName(data.name)) return socket.emit('errorMessage', 'Имя должно содержать минимум 2 символа.');
+        if (!validatePassword(data.password)) return socket.emit('errorMessage', 'Пароль: мин. 6 символов, буквы + цифры.');
+        if (!validateName(data.name)) return socket.emit('errorMessage', 'Имя: от 2 до 50 символов.');
 
         try {
             const hash = bcrypt.hashSync(data.password, 10);
             const role = data.role || 'bartender';
             const code = generateCode();
 
-            // Проверяем, не занят ли email
             const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(data.email);
             if (existing) return socket.emit('errorMessage', 'Пользователь с таким email уже существует.');
 
             db.prepare('INSERT INTO users (name, email, password, role, email_verified, verification_code) VALUES (?, ?, ?, ?, 0, ?)')
-                .run(data.name, data.email, hash, role, code);
+                .run(escapeHtml(data.name), data.email, hash, role, code);
 
-            // Отправка кода
             if (transporter) {
                 sendEmail(data.email, 'Mixora — Код подтверждения',
-                    `<h2>Добро пожаловать в Mixora!</h2><p>Ваш код подтверждения: <b style="font-size:24px;color:#D4A843;">${code}</b></p><p>Введите его в приложении для активации аккаунта.</p>`);
+                    `<h2>Добро пожаловать в Mixora!</h2><p>Ваш код: <b style="font-size:24px;color:#D4A843;">${code}</b></p>`);
                 socket.emit('verificationRequired', { email: data.email, message: 'Код отправлен на почту.' });
             } else {
-                console.log(`\n=== КОД ПОДТВЕРЖДЕНИЯ ДЛЯ ${data.email}: ${code} ===\n`);
-                socket.emit('verificationRequired', { email: data.email, message: 'Сервер без почты. Код в консоли сервера.' });
+                console.log(`\n=== КОД ДЛЯ ${data.email}: ${code} ===\n`);
+                socket.emit('verificationRequired', { email: data.email, message: 'Сервер без почты. Код в консоли.' });
             }
+            logAttempt(data.email, clientIp, true);
         } catch (e) {
             socket.emit('errorMessage', 'Ошибка регистрации.');
         }
@@ -204,11 +234,10 @@ io.on('connection', socket => {
     socket.on('verifyEmail', data => {
         const user = db.prepare('SELECT * FROM users WHERE email = ? AND email_verified = 0').get(data.email);
         if (!user) return socket.emit('errorMessage', 'Пользователь не найден или уже подтверждён.');
-        if (user.verification_code !== data.code) return socket.emit('errorMessage', 'Неверный код подтверждения.');
+        if (user.verification_code !== data.code) return socket.emit('errorMessage', 'Неверный код.');
 
         db.prepare('UPDATE users SET email_verified = 1, verification_code = NULL WHERE id = ?').run(user.id);
 
-        // Создаём бар для bartender
         if (user.role === 'bartender') {
             const br = db.prepare("INSERT INTO bars (name,address,type,created_by,created_at) VALUES (?,?,?,?,datetime('now','localtime'))")
                 .run('Мой бар', 'Адрес не указан', 'bar', user.id);
@@ -222,40 +251,40 @@ io.on('connection', socket => {
     // ========== ВХОД ==========
     socket.on('login', data => {
         const user = db.prepare('SELECT * FROM users WHERE email = ?').get(data.email);
-        if (!user) return socket.emit('errorMessage', 'Неверный email или пароль.');
+        if (!user) {
+            logAttempt(data.email, clientIp, false);
+            return socket.emit('errorMessage', 'Неверный email или пароль.');
+        }
 
-        // Проверка блокировки
         if (isBlocked(user)) {
-            const until = new Date(user.blocked_until + 'Z');
-            const mins = Math.ceil((until - new Date()) / 60000);
+            const mins = Math.ceil((new Date(user.blocked_until + 'Z') - new Date()) / 60000);
             return socket.emit('errorMessage', `Аккаунт заблокирован. Попробуйте через ${mins} мин.`);
         }
 
-        // Проверка подтверждения email
         if (!user.email_verified) return socket.emit('errorMessage', 'Email не подтверждён. Проверьте почту.');
 
-        // Авто-вход по сессии
         if (data.savedSession && user) {
             db.prepare('UPDATE users SET login_attempts = 0, blocked_until = NULL WHERE id = ?').run(user.id);
+            logAttempt(data.email, clientIp, true);
             return socket.emit('loginSuccess', {
                 user: { id: user.id, name: user.name, email: user.email, role: user.role },
                 bars: getBarsForUser(user.id, user.role)
             });
         }
 
-        // Проверка пароля
         if (!bcrypt.compareSync(data.password, user.password)) {
             const attempts = (user.login_attempts || 0) + 1;
             if (attempts >= 5) {
                 db.prepare("UPDATE users SET login_attempts = ?, blocked_until = datetime('now', '+15 minutes') WHERE id = ?").run(attempts, user.id);
-                return socket.emit('errorMessage', 'Аккаунт заблокирован на 15 минут из-за множества неверных попыток.');
+                return socket.emit('errorMessage', 'Аккаунт заблокирован на 15 минут.');
             }
             db.prepare('UPDATE users SET login_attempts = ? WHERE id = ?').run(attempts, user.id);
+            logAttempt(data.email, clientIp, false);
             return socket.emit('errorMessage', `Неверный пароль. Осталось попыток: ${5 - attempts}`);
         }
 
-        // Успешный вход
         db.prepare('UPDATE users SET login_attempts = 0, blocked_until = NULL WHERE id = ?').run(user.id);
+        logAttempt(data.email, clientIp, true);
         socket.emit('loginSuccess', {
             user: { id: user.id, name: user.name, email: user.email, role: user.role },
             bars: getBarsForUser(user.id, user.role)
@@ -265,7 +294,7 @@ io.on('connection', socket => {
     socket.on('getBarsList', d => socket.emit('barsList', getBarsForUser(d.userId, d.role)));
     socket.on('addBar', data => {
         const r = db.prepare("INSERT INTO bars (name,address,type,created_by,created_at) VALUES (?,?,?,?,datetime('now','localtime'))")
-            .run(data.name, data.address, data.type, data.userId);
+            .run(escapeHtml(data.name), escapeHtml(data.address), data.type, data.userId);
         const barId = r.lastInsertRowid;
         db.prepare('INSERT OR IGNORE INTO user_bars (user_id,bar_id) VALUES (?,?)').run(data.userId, barId);
         const st = db.prepare('INSERT INTO inventory_items (bar_id,name,unit,category,sealed_count,sealed_volume,opened_count,opened_volume,opened_remainder,total_volume,previous_total,broken_count) VALUES (?,?,?,?,0,0.7,0,0.7,0,0,0,0)');
@@ -273,7 +302,7 @@ io.on('connection', socket => {
         const u = db.prepare('SELECT role FROM users WHERE id=?').get(data.userId);
         socket.emit('barsList', getBarsForUser(data.userId, u.role));
     });
-    socket.on('renameBar', data => { db.prepare('UPDATE bars SET name=? WHERE id=?').run(data.newName, data.barId); socket.emit('barRenamed', data); });
+    socket.on('renameBar', data => { db.prepare('UPDATE bars SET name=? WHERE id=?').run(escapeHtml(data.newName), data.barId); socket.emit('barRenamed', data); });
     socket.on('deleteBar', data => { db.prepare('DELETE FROM bars WHERE id=?').run(data.barId); socket.emit('barsList', getBarsForUser(data.userId, data.role)); });
     socket.on('getMyBartenders', data => { socket.emit('myBartenders', db.prepare('SELECT u.id,u.name,u.email FROM users u JOIN manager_bartenders mb ON u.id=mb.bartender_id WHERE mb.manager_id=? ORDER BY u.name').all(data.managerId)); });
     socket.on('addBartender', data => {
@@ -296,12 +325,12 @@ io.on('connection', socket => {
     });
     socket.on('addItem', data => {
         db.prepare('INSERT INTO inventory_items (bar_id,name,unit,category,sealed_count,sealed_volume,opened_count,opened_volume,opened_remainder,total_volume,previous_total,broken_count) VALUES (?,?,?,?,0,0.7,0,0.7,0,0,0,0)')
-            .run(data.barId, data.name, data.unit, data.category || 'alcohol');
+            .run(data.barId, escapeHtml(data.name), data.unit, data.category || 'alcohol');
         socket.emit('inventoryUpdated', db.prepare('SELECT * FROM inventory_items WHERE bar_id=? ORDER BY category, name').all(data.barId));
     });
     socket.on('updateItem', data => {
         db.prepare('UPDATE inventory_items SET name=?,unit=?,category=?,sealed_count=?,sealed_volume=?,opened_count=?,opened_volume=?,opened_remainder=?,total_volume=?,broken_count=? WHERE id=?')
-            .run(data.name, data.unit, data.category || 'alcohol', data.sealed_count || 0, data.sealed_volume || 0.7, data.opened_count || 0, data.opened_volume || 0.7, data.opened_remainder || 0, data.total_volume || 0, data.broken_count || 0, data.itemId);
+            .run(escapeHtml(data.name), data.unit, data.category || 'alcohol', data.sealed_count || 0, data.sealed_volume || 0.7, data.opened_count || 0, data.opened_volume || 0.7, data.opened_remainder || 0, data.total_volume || 0, data.broken_count || 0, data.itemId);
         socket.emit('inventoryUpdated', db.prepare('SELECT * FROM inventory_items WHERE bar_id=? ORDER BY category, name').all(data.barId));
     });
     socket.on('deleteItem', data => {
@@ -321,10 +350,10 @@ io.on('connection', socket => {
         const csv = new Parser({ fields: ['name', 'category', 'sealed_count', 'sealed_volume', 'opened_count', 'opened_remainder', 'broken_count', 'total_volume', 'unit', 'previous_total'] }).parse(items);
         socket.emit('exportReady', { csv, filename: `Mixora_${bar.name}_${new Date().toISOString().slice(0, 10)}.csv` });
     });
-    socket.on('disconnect', () => console.log('-', socket.id));
+    socket.on('disconnect', () => console.log(`- ${socket.id}`));
 });
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, '0.0.0.0', () => {
-    console.log('Mixora запущен на порту ' + PORT);
+    console.log(`Mixora защищённая запущена на порту ${PORT}`);
 });
