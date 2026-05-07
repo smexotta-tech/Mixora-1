@@ -10,29 +10,11 @@ const multer = require('multer');
 const xlsx = require('xlsx');
 const fs = require('fs');
 const nodemailer = require('nodemailer');
-const rateLimit = require('express-rate-limit');
 
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server);
 
-// ========== RATE LIMIT ==========
-const generalLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 200,
-    message: { error: 'Слишком много запросов. Попробуйте позже.' },
-    standardHeaders: true,
-    legacyHeaders: false
-});
-app.use(generalLimiter);
-
-const uploadLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 10,
-    message: { error: 'Слишком много загрузок. Попробуйте позже.' }
-});
-
-// ========== СТАТИКА И ЗАЩИТА БАЗЫ ==========
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/mixora.db', (req, res) => res.status(403).send('Доступ запрещён'));
 app.use('/uploads', (req, res) => res.status(403).send('Доступ запрещён'));
@@ -40,7 +22,6 @@ app.use('/uploads', (req, res) => res.status(403).send('Доступ запре�
 const upload = multer({ dest: 'uploads/' });
 if (!fs.existsSync('uploads')) fs.mkdirSync('uploads', { recursive: true });
 
-// ========== ПОЧТА ==========
 let transporter = null;
 if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
     transporter = nodemailer.createTransport({
@@ -48,15 +29,15 @@ if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
         auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
     });
     console.log('Email настроен.');
-} else { console.log('Email ОТКЛЮЧЕН. Коды подтверждения будут в консоли.'); }
+} else { console.log('Email ОТКЛЮЧЕН. Коды в консоли.'); }
 
-// ========== БАЗА ДАННЫХ ==========
 const db = new Database('mixora.db');
 db.pragma('foreign_keys = ON');
 
 // ===== ВРЕМЕННО: ПЕРЕСОЗДАНИЕ ТАБЛИЦЫ USERS =====
-db.exec(`DROP TABLE IF EXISTS users`);
-db.exec(`CREATE TABLE users (
+// УДАЛИТЬ ЭТОТ БЛОК ПОСЛЕ ПЕРВОЙ УСПЕШНОЙ РЕГИСТРАЦИИ!
+try { db.exec(`DROP TABLE IF EXISTS users`); } catch(e) {}
+db.exec(`CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     email TEXT UNIQUE NOT NULL,
@@ -70,18 +51,6 @@ db.exec(`CREATE TABLE users (
 console.log('Таблица users пересоздана с новыми колонками.');
 // ===== КОНЕЦ ВРЕМЕННОГО БЛОКА =====
 
-// Таблицы
-db.exec(`CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    email TEXT UNIQUE NOT NULL,
-    password TEXT NOT NULL,
-    role TEXT NOT NULL DEFAULT 'bartender',
-    email_verified INTEGER DEFAULT 0,
-    verification_code TEXT,
-    login_attempts INTEGER DEFAULT 0,
-    blocked_until TEXT
-)`);
 db.exec(`CREATE TABLE IF NOT EXISTS manager_bartenders (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     manager_id INTEGER NOT NULL,
@@ -122,32 +91,13 @@ db.exec(`CREATE TABLE IF NOT EXISTS inventory_dates (
     PRIMARY KEY(bar_id)
 )`);
 
-// ========== ВАЛИДАЦИЯ ==========
-function validateEmail(email) {
-    return /^.{5,}@.+\..+$/.test(email);
-}
-function validatePassword(password) {
-    return password.length >= 6 && /[a-zA-Z]/.test(password) && /[0-9]/.test(password);
-}
-function validateName(name) {
-    return name && name.trim().length >= 2 && name.trim().length <= 50;
-}
-function escapeHtml(str) {
-    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-function isBlocked(user) {
-    if (!user.blocked_until) return false;
-    return new Date() < new Date(user.blocked_until + 'Z');
-}
-function generateCode() {
-    return Math.floor(100000 + Math.random() * 900000).toString();
-}
-function logAttempt(email, ip, success) {
-    const status = success ? 'УСПЕХ' : 'НЕУДАЧА';
-    console.log(`[${new Date().toISOString()}] ${status} | Email: ${email} | IP: ${ip}`);
-}
+function validateEmail(email) { return /^.{5,}@.+\..+$/.test(email); }
+function validatePassword(password) { return password.length >= 6 && /[a-zA-Z]/.test(password) && /[0-9]/.test(password); }
+function validateName(name) { return name && name.trim().length >= 2 && name.trim().length <= 50; }
+function escapeHtml(str) { return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function isBlocked(user) { if (!user.blocked_until) return false; return new Date() < new Date(user.blocked_until + 'Z'); }
+function generateCode() { return Math.floor(100000 + Math.random() * 900000).toString(); }
 
-// ========== ШАБЛОН ==========
 const DEFAULT_TEMPLATE = [
     { name:'Водка', unit:'л', cat:'alcohol' }, { name:'Виски', unit:'л', cat:'alcohol' },
     { name:'Джин', unit:'л', cat:'alcohol' }, { name:'Ром', unit:'л', cat:'alcohol' },
@@ -172,12 +122,11 @@ function getBarsForUser(userId, role) {
 function sendEmail(to, subject, html) {
     if (!transporter) return;
     transporter.sendMail({ from: `"Mixora" <${process.env.EMAIL_USER}>`, to, subject, html })
-        .then(() => console.log('Email отправлен:', to))
-        .catch(e => console.error('Ошибка email:', e.message));
+        .then(() => console.log('Email:', to))
+        .catch(e => console.error('Email error:', e.message));
 }
 
-// ========== API ЗАГРУЗКИ ==========
-app.post('/upload-inventory', uploadLimiter, upload.single('file'), (req, res) => {
+app.post('/upload-inventory', upload.single('file'), (req, res) => {
     try {
         if(!req.file) return res.status(400).json({error:'Нет файла'});
         const barId=parseInt(req.body.barId); if(!barId) return res.status(400).json({error:'Нет barId'});
@@ -204,7 +153,6 @@ app.post('/upload-inventory', uploadLimiter, upload.single('file'), (req, res) =
 });
 app.get('/download-template',(_,res)=>{res.setHeader('Content-Type','text/csv;charset=utf-8');res.setHeader('Content-Disposition','attachment;filename=Mixora_Шаблон.csv');res.send('Название,Категория,Закр.кол-во,Закр.объём,Вскр.кол-во,Вскр.остаток,Битых,Общий остаток,Ед.изм,Было\nВодка Finlandia,alcohol,3,0.7,2,0.3,0,2.7,л,3.5\nБокалы,dishes,48,0,0,0,3,45,шт,50');});
 
-// ========== SOCKET.IO ==========
 io.on('connection', socket => {
     const clientIp = socket.handshake.address;
     console.log(`+ ${socket.id} (${clientIp})`);
@@ -227,13 +175,12 @@ io.on('connection', socket => {
 
             if (transporter) {
                 sendEmail(data.email, 'Mixora — Код подтверждения',
-                    `<h2>Добро пожаловать в Mixora!</h2><p>Ваш код: <b style="font-size:24px;color:#D4A843;">${code}</b></p>`);
-                socket.emit('verificationRequired', { email: data.email, message: 'Код отправлен на почту.' });
+                    `<h2>Добро пожаловать в Mixora!</h2><p>Ваш код подтверждения: <b style="font-size:24px;color:#D4A843;">${code}</b></p><p>Введите его в приложении.</p>`);
+                socket.emit('verificationRequired', { email: data.email });
             } else {
                 console.log(`\n=== КОД ДЛЯ ${data.email}: ${code} ===\n`);
-                socket.emit('verificationRequired', { email: data.email, message: 'Сервер без почты. Код в консоли.' });
+                socket.emit('verificationRequired', { email: data.email });
             }
-            logAttempt(data.email, clientIp, true);
         } catch (e) {
             console.error('Ошибка регистрации:', e.message);
             socket.emit('errorMessage', 'Ошибка регистрации.');
@@ -259,10 +206,7 @@ io.on('connection', socket => {
 
     socket.on('login', data => {
         const user = db.prepare('SELECT * FROM users WHERE email = ?').get(data.email);
-        if (!user) {
-            logAttempt(data.email, clientIp, false);
-            return socket.emit('errorMessage', 'Неверный email или пароль.');
-        }
+        if (!user) return socket.emit('errorMessage', 'Неверный email или пароль.');
 
         if (isBlocked(user)) {
             const mins = Math.ceil((new Date(user.blocked_until + 'Z') - new Date()) / 60000);
@@ -273,7 +217,6 @@ io.on('connection', socket => {
 
         if (data.savedSession && user) {
             db.prepare('UPDATE users SET login_attempts = 0, blocked_until = NULL WHERE id = ?').run(user.id);
-            logAttempt(data.email, clientIp, true);
             return socket.emit('loginSuccess', {
                 user: { id: user.id, name: user.name, email: user.email, role: user.role },
                 bars: getBarsForUser(user.id, user.role)
@@ -287,12 +230,10 @@ io.on('connection', socket => {
                 return socket.emit('errorMessage', 'Аккаунт заблокирован на 15 минут.');
             }
             db.prepare('UPDATE users SET login_attempts = ? WHERE id = ?').run(attempts, user.id);
-            logAttempt(data.email, clientIp, false);
             return socket.emit('errorMessage', `Неверный пароль. Осталось попыток: ${5 - attempts}`);
         }
 
         db.prepare('UPDATE users SET login_attempts = 0, blocked_until = NULL WHERE id = ?').run(user.id);
-        logAttempt(data.email, clientIp, true);
         socket.emit('loginSuccess', {
             user: { id: user.id, name: user.name, email: user.email, role: user.role },
             bars: getBarsForUser(user.id, user.role)
@@ -322,7 +263,7 @@ io.on('connection', socket => {
         const lnk = db.prepare('INSERT OR IGNORE INTO user_bars (user_id,bar_id) VALUES (?,?)');
         for (const bar of bars) lnk.run(b.id, bar.id);
         const m = db.prepare('SELECT name FROM users WHERE id=?').get(data.managerId);
-        sendEmail(b.email, '🍸 Вас добавили в Mixora!', `<h2>Привет, ${b.name}!</h2><p>Менеджер <b>${m.name}</b> добавил вас в команду.</p>`);
+        sendEmail(b.email, 'Вас добавили в Mixora!', `<h2>Привет, ${b.name}!</h2><p>Менеджер <b>${m.name}</b> добавил вас в команду.</p>`);
         socket.emit('myBartenders', db.prepare('SELECT u.id,u.name,u.email FROM users u JOIN manager_bartenders mb ON u.id=mb.bartender_id WHERE mb.manager_id=? ORDER BY u.name').all(data.managerId));
         socket.emit('successMessage', `Бармен ${b.name} добавлен!`);
     });
@@ -363,5 +304,5 @@ io.on('connection', socket => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, '0.0.0.0', () => {
-    console.log(`Mixora защищённая запущена на порту ${PORT}`);
+    console.log(`Mixora запущена на порту ${PORT}`);
 });
