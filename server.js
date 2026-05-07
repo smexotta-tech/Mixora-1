@@ -54,14 +54,20 @@ if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
 const db = new Database('mixora.db');
 db.pragma('foreign_keys = ON');
 
-// ===== ВРЕМЕННО: ОЧИСТКА ДАННЫХ (УДАЛИТЬ ПОСЛЕ ПЕРВОГО ЗАПУСКА) =====
-try { db.exec(`DELETE FROM inventory_dates`); } catch(e) {}
-try { db.exec(`DELETE FROM inventory_items`); } catch(e) {}
-try { db.exec(`DELETE FROM user_bars`); } catch(e) {}
-try { db.exec(`DELETE FROM bars`); } catch(e) {}
-try { db.exec(`DELETE FROM manager_bartenders`); } catch(e) {}
-try { db.exec(`DELETE FROM users`); } catch(e) {}
-console.log('Данные очищены.');
+// ===== ВРЕМЕННО: ПЕРЕСОЗДАНИЕ ТАБЛИЦЫ USERS =====
+db.exec(`DROP TABLE IF EXISTS users`);
+db.exec(`CREATE TABLE users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    password TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'bartender',
+    email_verified INTEGER DEFAULT 0,
+    verification_code TEXT,
+    login_attempts INTEGER DEFAULT 0,
+    blocked_until TEXT
+)`);
+console.log('Таблица users пересоздана с новыми колонками.');
 // ===== КОНЕЦ ВРЕМЕННОГО БЛОКА =====
 
 // Таблицы
