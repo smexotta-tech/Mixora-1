@@ -1,25 +1,22 @@
 {
-  "dependencies": {
-    "bcryptjs": "^3.0.3",
-    "better-sqlite3": "^12.9.0",
-    "dotenv": "^17.4.2",
-    "express": "^5.2.1",
-    "express-rate-limit": "^8.5.1",
-    "json2csv": "^6.0.0-alpha.2",
-    "multer": "^2.1.1",
-    "nodemailer": "^8.0.7",
-    "socket.io": "^4.8.3",
-    "xlsx": "^0.18.5"
-  },
   "name": "mixora",
   "version": "1.0.0",
+  "description": "Премиум инвентаризация для баров",
   "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": ""
+  "dependencies": {
+    "bcryptjs": "latest",
+    "better-sqlite3": "latest",
+    "dotenv": "latest",
+    "express": "latest",
+    "express-rate-limit": "latest",
+    "helmet": "latest",
+    "json2csv": "latest",
+    "multer": "latest",
+    "nodemailer": "latest",
+    "socket.io": "latest",
+    "xlsx": "latest"
+  }
 }
