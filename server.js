@@ -54,14 +54,14 @@ if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
 const db = new Database('mixora.db');
 db.pragma('foreign_keys = ON');
 
-// ===== ВРЕМЕННО: СБРОС БАЗЫ (УДАЛИТЬ ПОСЛЕ ПЕРВОГО ЗАПУСКА) =====
-db.exec(`DROP TABLE IF EXISTS users`);
-db.exec(`DROP TABLE IF EXISTS bars`);
-db.exec(`DROP TABLE IF EXISTS user_bars`);
-db.exec(`DROP TABLE IF EXISTS inventory_items`);
-db.exec(`DROP TABLE IF EXISTS inventory_dates`);
-db.exec(`DROP TABLE IF EXISTS manager_bartenders`);
-console.log('База сброшена. После успешной регистрации удали этот блок!');
+// ===== ВРЕМЕННО: ОЧИСТКА ДАННЫХ (УДАЛИТЬ ПОСЛЕ ПЕРВОГО ЗАПУСКА) =====
+try { db.exec(`DELETE FROM inventory_dates`); } catch(e) {}
+try { db.exec(`DELETE FROM inventory_items`); } catch(e) {}
+try { db.exec(`DELETE FROM user_bars`); } catch(e) {}
+try { db.exec(`DELETE FROM bars`); } catch(e) {}
+try { db.exec(`DELETE FROM manager_bartenders`); } catch(e) {}
+try { db.exec(`DELETE FROM users`); } catch(e) {}
+console.log('Данные очищены.');
 // ===== КОНЕЦ ВРЕМЕННОГО БЛОКА =====
 
 // Таблицы
