@@ -56,9 +56,6 @@ if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
     console.log('✅ Email настроен.');
 }
 
-// ВРЕМЕННО: удалить после первого деплоя
-try { fs.unlinkSync('mixora.db'); } catch(e) {}
-
 const db = new Database('mixora.db');
 db.pragma('foreign_keys = ON');
 
