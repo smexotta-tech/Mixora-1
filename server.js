@@ -21,14 +21,19 @@ app.use(helmet({
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.socket.io", "https://fonts.googleapis.com"],
+            scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://cdn.socket.io", "http://cdn.socket.io", "https://fonts.googleapis.com", "http://fonts.googleapis.com"],
             scriptSrcAttr: ["'self'", "'unsafe-inline'", "'unsafe-hashes'"],
-            styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-            fontSrc: ["'self'", "https://fonts.gstatic.com"],
-            connectSrc: ["'self'", "ws:", "wss:", "https://fonts.googleapis.com", "https://fonts.gstatic.com"],
+            styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "http://fonts.googleapis.com"],
+            fontSrc: ["'self'", "https://fonts.gstatic.com", "http://fonts.gstatic.com"],
+            connectSrc: ["'self'", "ws:", "wss:", "http:", "https:"],
             imgSrc: ["'self'", "data:"],
         }
     },
+    crossOriginEmbedderPolicy: false,
+    crossOriginOpenerPolicy: false,
+    crossOriginResourcePolicy: false,
+    originAgentCluster: false
+}));
     crossOriginEmbedderPolicy: false,
     crossOriginOpenerPolicy: false,
     crossOriginResourcePolicy: false,
