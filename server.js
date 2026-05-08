@@ -69,7 +69,16 @@ if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
 }
 
 const db = new Database('mixora.db');
+
 db.pragma('foreign_keys = ON');
+// ВРЕМЕННО: удалить после первого деплоя
+try { db.exec(`DELETE FROM inventory_dates`); } catch(e) {}
+try { db.exec(`DELETE FROM inventory_items`); } catch(e) {}
+try { db.exec(`DELETE FROM user_bars`); } catch(e) {}
+try { db.exec(`DELETE FROM bars`); } catch(e) {}
+try { db.exec(`DELETE FROM manager_bartenders`); } catch(e) {}
+try { db.exec(`DELETE FROM users`); } catch(e) {}
+console.log('Все пользователи удалены.');
 
 db.exec(`CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
