@@ -170,27 +170,15 @@ function showQuickAddOpened(event, itemId) {
     const card = document.querySelector(`.inventory-item[data-item-id="${itemId}"]`);
     const remInput = card?.querySelector('.opened-rem');
     const remainder = parseFloat(remInput?.value) || 0;
-    if (remainder <= 0) {
-        alert('Введите остаток в литрах (например: 0.3)');
-        return;
-    }
+    if (remainder <= 0) { alert('Введите остаток в литрах (например: 0.3)'); return; }
     const item = inventoryItems.find(i => i.id === itemId);
     if (!item) return;
-    
     item.opened_count = (item.opened_count || 0) + 1;
     const newOpenedTotal = +(((item.opened_count - 1) * (item.opened_remainder || 0)) + remainder).toFixed(3);
     item.opened_remainder = +(newOpenedTotal / item.opened_count).toFixed(4);
     item.total_volume = +((item.sealed_count || 0) * (item.sealed_volume || 0.7) + newOpenedTotal).toFixed(3);
-    
     if (remInput) remInput.value = '';
-    
-    socket.emit('updateItem', {
-        itemId, name: item.name, unit: item.unit, category: item.category || 'alcohol',
-        sealed_count: item.sealed_count || 0, sealed_volume: item.sealed_volume || 0.7,
-        opened_count: item.opened_count, opened_volume: item.opened_volume || 0.7,
-        opened_remainder: item.opened_remainder, total_volume: item.total_volume,
-        broken_count: item.broken_count || 0, barId: currentBarId
-    });
+    socket.emit('updateItem', { itemId, name: item.name, unit: item.unit, category: item.category || 'alcohol', sealed_count: item.sealed_count || 0, sealed_volume: item.sealed_volume || 0.7, opened_count: item.opened_count, opened_volume: item.opened_volume || 0.7, opened_remainder: item.opened_remainder, total_volume: item.total_volume, broken_count: item.broken_count || 0, barId: currentBarId });
     renderInventory();
 }
 
@@ -212,9 +200,39 @@ function renderRegister() {
     document.getElementById('goToLogin').addEventListener('click', ev => { ev.preventDefault(); renderLogin(); });
 }
 
-function showVerificationModal(email) { const ov = document.createElement('div'); ov.className='modal-overlay fade-in'; ov.innerHTML=`<div class="modal-content"><h3 style="font-weight:500;margin-bottom:14px;">Подтверждение email</h3><p style="color:var(--text-secondary);font-size:13px;margin-bottom:16px;">Код отправлен на <b>${email}</b></p><div class="input-group"><input type="text" id="verifyCode" placeholder="6-значный код" class="glass-input" maxlength="6" style="text-align:center;font-size:20px;letter-spacing:4px;"></div><div id="verifyError" style="color:#ff6b6b;font-size:12px;margin-bottom:10px;display:none;"></div><button class="glass-btn primary full-width" id="verifyBtn">Подтвердить</button></div>`; document.body.appendChild(ov); document.getElementById('verifyBtn').addEventListener('click', () => { const code = document.getElementById('verifyCode').value.trim(); if (!code) return; socket.emit('verifyEmail', { email, code }); ov.remove(); }); ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); }); }
+function showVerificationModal(email) {
+    const ov = document.createElement('div');
+    ov.className = 'modal-overlay fade-in';
+    ov.innerHTML = `<div class="modal-content"><h3 style="font-weight:500;margin-bottom:14px;">Подтверждение email</h3><p style="color:var(--text-secondary);font-size:13px;margin-bottom:16px;">Код отправлен на <b>${email}</b></p><div class="input-group"><input type="text" id="verifyCode" placeholder="6-значный код" class="glass-input" maxlength="6" style="text-align:center;font-size:20px;letter-spacing:4px;"></div><div id="verifyError" style="color:#ff6b6b;font-size:12px;margin-bottom:10px;display:none;"></div><button class="glass-btn primary full-width" id="verifyBtn" style="margin-bottom:8px;">Подтвердить</button><button class="glass-btn full-width" id="resendBtn">📧 Отправить код повторно</button><p style="text-align:center;margin-top:10px;font-size:11px;color:var(--text-secondary);">Код также показан в консоли сервера</p></div>`;
+    document.body.appendChild(ov);
+    
+    document.getElementById('verifyBtn').addEventListener('click', () => {
+        const code = document.getElementById('verifyCode').value.trim();
+        if (!code) {
+            document.getElementById('verifyError').style.display = 'block';
+            document.getElementById('verifyError').innerText = 'Введите код';
+            return;
+        }
+        socket.emit('verifyEmail', { email, code });
+    });
+    
+    document.getElementById('resendBtn').addEventListener('click', () => {
+        socket.emit('resendCode', { email });
+        document.getElementById('verifyError').style.display = 'block';
+        document.getElementById('verifyError').style.color = '#2EE59D';
+        document.getElementById('verifyError').innerText = 'Новый код отправлен!';
+        document.getElementById('resendBtn').disabled = true;
+        document.getElementById('resendBtn').innerText = 'Код отправлен';
+        setTimeout(() => {
+            const btn = document.getElementById('resendBtn');
+            if (btn) { btn.disabled = false; btn.innerText = '📧 Отправить код повторно'; }
+        }, 30000);
+    });
+    
+    ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+}
 
-function renderBarList(bars) { myBars = bars || []; let h = ''; myBars.forEach(b => { const d = b.last_inventory_date === 'Никогда' ? 'Нет данных' : b.last_inventory_date; const cr = b.created_by === currentUser.id ? 'Вы' : (b.created_by_name || 'Неизвестно'); h += `<div class="glass-card bar-card fade-in" data-bar-id="${b.id}"><div style="display:flex;justify-content:space-between;align-items:flex-start;"><div><div style="font-weight:500;font-size:15px;">${b.name}</div><div style="color:var(--text-secondary);font-size:11px;">${b.address||'Адрес не указан'}</div><div style="color:var(--text-secondary);font-size:10px;margin-top:4px;">📋 ${d} | 👤 ${cr}</div></div><span class="badge">${b.type}</span></div><div class="bar-actions"><button class="btn-sm edit rename-btn" data-id="${b.id}" data-name="${b.name}">✏️</button><button class="btn-sm danger delete-btn" data-id="${b.id}" data-name="${b.name}">🗑️</button></div></div>`; }); const rb = currentUser.role === 'manager' ? '<span class="badge manager" style="margin-left:8px;">Бар-менеджер</span>' : '<span class="badge" style="margin-left:8px;">Бармен</span>'; app.innerHTML = `<div class="screen"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;"><div style="display:flex;align-items:center;"><div class="logo-icon">M</div><div style="margin-left:10px;"><div style="font-weight:500;">${currentUser.name}</div><div style="font-size:10px;color:var(--text-secondary);">Mixora v1.01 ${rb}</div></div></div><button class="logout-btn" id="logoutBtn">🚪</button></div><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;"><h2 style="font-weight:500;font-size:20px;">Мои бары</h2>${currentUser.role==='manager'?'<button class="btn-sm edit" id="bartendersBtn">👥 Бармены</button>':''}</div><div class="list-group">${h}</div><button class="glass-btn primary full-width" id="addBarBtn" style="margin-top:14px;">➕ Добавить бар</button></div>`; document.querySelectorAll('.bar-card').forEach(c => c.addEventListener('click', function(e) { if (e.target.closest('.bar-actions')) return; const barId = parseInt(this.dataset.barId); localStorage.setItem('mixora_barId', barId); socket.emit('selectBar', { barId }); })); document.querySelectorAll('.rename-btn').forEach(b => b.addEventListener('click', function(e) { e.stopPropagation(); e.preventDefault(); showRenameModal(this.dataset.id, this.dataset.name); })); document.querySelectorAll('.delete-btn').forEach(b => b.addEventListener('click', function(e) { e.stopPropagation(); e.preventDefault(); showDeleteBarModal(this.dataset.id, this.dataset.name); })); document.getElementById('addBarBtn').addEventListener('click', showAddBarModal); document.getElementById('logoutBtn').addEventListener('click', () => { localStorage.clear(); currentUser = null; currentBarId = null; inventoryItems = []; myBars = []; renderLogin(); }); if (currentUser.role === 'manager') document.getElementById('bartendersBtn').addEventListener('click', showBartendersModal); }
+function renderBarList(bars) { myBars = bars || []; let h = ''; myBars.forEach(b => { const d = b.last_inventory_date === 'Никогда' ? 'Нет данных' : b.last_inventory_date; const cr = b.created_by === currentUser.id ? 'Вы' : (b.created_by_name || 'Неизвестно'); h += `<div class="glass-card bar-card fade-in" data-bar-id="${b.id}"><div style="display:flex;justify-content:space-between;align-items:flex-start;"><div><div style="font-weight:500;font-size:15px;">${b.name}</div><div style="color:var(--text-secondary);font-size:11px;">${b.address||'Адрес не указан'}</div><div style="color:var(--text-secondary);font-size:10px;margin-top:4px;">📋 ${d} | 👤 ${cr}</div></div><span class="badge">${b.type}</span></div><div class="bar-actions"><button class="btn-sm edit rename-btn" data-id="${b.id}" data-name="${b.name}">✏️</button><button class="btn-sm danger delete-btn" data-id="${b.id}" data-name="${b.name}">🗑️</button></div></div>`; }); const rb = currentUser.role === 'manager' ? '<span class="badge manager" style="margin-left:8px;">Бар-менеджер</span>' : '<span class="badge" style="margin-left:8px;">Бармен</span>'; app.innerHTML = `<div class="screen"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;"><div style="display:flex;align-items:center;"><div class="logo-icon">M</div><div style="margin-left:10px;"><div style="font-weight:500;">${currentUser.name}</div><div style="font-size:10px;color:var(--text-secondary);">Mixora v1.02 ${rb}</div></div></div><button class="logout-btn" id="logoutBtn">🚪</button></div><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;"><h2 style="font-weight:500;font-size:20px;">Мои бары</h2>${currentUser.role==='manager'?'<button class="btn-sm edit" id="bartendersBtn">👥 Бармены</button>':''}</div><div class="list-group">${h}</div><button class="glass-btn primary full-width" id="addBarBtn" style="margin-top:14px;">➕ Добавить бар</button></div>`; document.querySelectorAll('.bar-card').forEach(c => c.addEventListener('click', function(e) { if (e.target.closest('.bar-actions')) return; const barId = parseInt(this.dataset.barId); localStorage.setItem('mixora_barId', barId); socket.emit('selectBar', { barId }); })); document.querySelectorAll('.rename-btn').forEach(b => b.addEventListener('click', function(e) { e.stopPropagation(); e.preventDefault(); showRenameModal(this.dataset.id, this.dataset.name); })); document.querySelectorAll('.delete-btn').forEach(b => b.addEventListener('click', function(e) { e.stopPropagation(); e.preventDefault(); showDeleteBarModal(this.dataset.id, this.dataset.name); })); document.getElementById('addBarBtn').addEventListener('click', showAddBarModal); document.getElementById('logoutBtn').addEventListener('click', () => { localStorage.clear(); currentUser = null; currentBarId = null; inventoryItems = []; myBars = []; renderLogin(); }); if (currentUser.role === 'manager') document.getElementById('bartendersBtn').addEventListener('click', showBartendersModal); }
 
 function showRenameModal(id, name) { const ov = document.createElement('div'); ov.className='modal-overlay fade-in'; ov.innerHTML=`<div class="modal-content"><h3 style="font-weight:500;margin-bottom:14px;">Переименовать</h3><div class="input-group"><label>Название</label><input type="text" id="newName" value="${name}" class="glass-input"></div><div style="display:flex;gap:10px;"><button class="glass-btn" id="cancelRename" style="flex:1;">Отмена</button><button class="glass-btn primary" id="saveRename" style="flex:1;">Сохранить</button></div></div>`; document.body.appendChild(ov); document.getElementById('cancelRename').addEventListener('click', () => ov.remove()); ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); }); document.getElementById('saveRename').addEventListener('click', () => { const n = document.getElementById('newName').value.trim(); if (!n) return; socket.emit('renameBar', { barId: parseInt(id), newName: n }); ov.remove(); }); }
 function showDeleteBarModal(id, name) { const ov = document.createElement('div'); ov.className='modal-overlay fade-in'; ov.innerHTML=`<div class="modal-content"><h3 style="font-weight:500;margin-bottom:12px;">Удалить бар?</h3><p style="color:var(--text-secondary);font-size:13px;margin-bottom:16px;">«${name}» будет удалён безвозвратно.</p><div style="display:flex;gap:10px;"><button class="glass-btn" id="cancelDel">Отмена</button><button class="glass-btn" id="confirmDel" style="background:rgba(255,107,107,0.2);border-color:rgba(255,107,107,0.4);color:#ff6b6b;">Удалить</button></div></div>`; document.body.appendChild(ov); document.getElementById('cancelDel').addEventListener('click', () => ov.remove()); ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); }); document.getElementById('confirmDel').addEventListener('click', () => { socket.emit('deleteBar', { barId: parseInt(id), userId: currentUser.id, role: currentUser.role }); ov.remove(); }); }
@@ -253,7 +271,7 @@ function renderInventory() {
     let tabsHtml = '';
     Object.entries(catNames).forEach(([key, name]) => { tabsHtml += `<button class="tab-btn ${activeCategory === key ? 'active' : ''}" data-cat="${key}">${name}</button>`; });
 
-    app.innerHTML = `<div class="screen"><div class="header"><div class="logo"><div class="logo-icon">M</div><div><div style="font-weight:600;">Mixora</div><div style="font-size:10px;color:var(--text-secondary);">v1.01</div></div></div><div style="display:flex;gap:6px;"><button class="glass-btn" id="uploadBtn" style="font-size:11px;padding:8px 10px;">📤</button><button class="glass-btn" id="backBtn" style="font-size:11px;padding:8px 10px;">←</button></div></div><h2 style="font-weight:500;font-size:18px;">${currentBarName}</h2><div class="search-box"><span class="search-icon">🔍</span><input type="text" id="searchInput" class="glass-input" placeholder="Поиск по названию..." value="${searchQuery}"><span class="clear-search" id="clearSearch" style="${searchQuery ? 'display:block;' : 'display:none;'}">✕</span></div><div class="tabs-container">${tabsHtml}</div><div class="list-group">${itemsHtml}</div><button class="glass-btn full-width" id="addItemBtn" style="margin-bottom:6px;">➕ Добавить позицию</button><div class="export-section"><button class="glass-btn primary" id="exportBtn" style="flex:2;">📥 CSV</button><button class="glass-btn" id="saveBtn" style="flex:1;">💾</button></div></div>`;
+    app.innerHTML = `<div class="screen"><div class="header"><div class="logo"><div class="logo-icon">M</div><div><div style="font-weight:600;">Mixora</div><div style="font-size:10px;color:var(--text-secondary);">v1.02</div></div></div><div style="display:flex;gap:6px;"><button class="glass-btn" id="uploadBtn" style="font-size:11px;padding:8px 10px;">📤</button><button class="glass-btn" id="backBtn" style="font-size:11px;padding:8px 10px;">←</button></div></div><h2 style="font-weight:500;font-size:18px;">${currentBarName}</h2><div class="search-box"><span class="search-icon">🔍</span><input type="text" id="searchInput" class="glass-input" placeholder="Поиск по названию..." value="${searchQuery}"><span class="clear-search" id="clearSearch" style="${searchQuery ? 'display:block;' : 'display:none;'}">✕</span></div><div class="tabs-container">${tabsHtml}</div><div class="list-group">${itemsHtml}</div><button class="glass-btn full-width" id="addItemBtn" style="margin-bottom:6px;">➕ Добавить позицию</button><div class="export-section"><button class="glass-btn primary" id="exportBtn" style="flex:2;">📥 CSV</button><button class="glass-btn" id="saveBtn" style="flex:1;">💾</button></div></div>`;
 
     const si = document.getElementById('searchInput');
     document.getElementById('clearSearch').addEventListener('click', () => { searchQuery = ''; renderInventory(); });
@@ -303,9 +321,7 @@ function updateItemTotal(itemId) {
     }
     const td = card.querySelector('.total-display'); if (td) td.innerText = `📊 ${item.total_volume} ${item.unit}`;
     const calcRes = card.querySelectorAll('.calc-result');
-    if (item.unit === 'л' && calcRes.length >= 1) {
-        calcRes[0].innerText = `= ${+(item.sealed_count * item.sealed_volume).toFixed(3)} л`;
-    }
+    if (item.unit === 'л' && calcRes.length >= 1) calcRes[0].innerText = `= ${+(item.sealed_count * item.sealed_volume).toFixed(3)} л`;
 }
 
 function saveInventory() { const items = inventoryItems.map(i => ({ id: i.id, sealed_count: i.sealed_count || 0, sealed_volume: i.sealed_volume || 0.7, opened_count: i.opened_count || 0, opened_volume: i.opened_volume || 0.7, opened_remainder: i.opened_remainder || 0, total_volume: i.total_volume || 0, broken_count: i.broken_count || 0 })); socket.emit('saveInventory', { barId: currentBarId, items }); const btn = document.getElementById('saveBtn'); btn.innerText = '✅'; setTimeout(() => { btn.innerText = '💾'; }, 1200); }

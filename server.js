@@ -15,16 +15,13 @@ const rateLimit = require('express-rate-limit');
 
 const app = express();
 const server = http.createServer(app);
-const io = socketIo(server, {
-    cors: { origin: "*", methods: ["GET", "POST"] }
-});
+const io = socketIo(server, { cors: { origin: "*", methods: ["GET", "POST"] } });
 
-// Совместимость с Яндекс.Браузером
 app.use(helmet({
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://cdn.socket.io", "https://fonts.googleapis.com"],
+            scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.socket.io", "https://fonts.googleapis.com"],
             scriptSrcAttr: ["'self'", "'unsafe-inline'", "'unsafe-hashes'"],
             styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
             fontSrc: ["'self'", "https://fonts.gstatic.com"],
@@ -49,28 +46,19 @@ const upload = multer({ dest: 'uploads/' });
 if (!fs.existsSync('uploads')) fs.mkdirSync('uploads', { recursive: true });
 
 let transporter = null;
-console.log('============================================');
-console.log('  ПРОВЕРКА EMAIL:');
-console.log('  EMAIL_USER:', process.env.EMAIL_USER || 'НЕ ЗАДАН');
-console.log('  EMAIL_PASS:', process.env.EMAIL_PASS ? 'ЗАДАН (скрыт)' : 'НЕ ЗАДАН');
-console.log('============================================');
-
 if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-    console.log('⚠️  ВНИМАНИЕ: Почта не настроена!');
-    console.log('   Коды подтверждения будут выводиться ТОЛЬКО в эту консоль.');
+    console.log('⚠️  EMAIL_USER или EMAIL_PASS не заданы. Коды будут в консоли.');
 } else {
     transporter = nodemailer.createTransport({
-        host: 'smtp.yandex.ru',
-        port: 465,
-        secure: true,
+        host: 'smtp.yandex.ru', port: 465, secure: true,
         auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
     });
-    console.log('✅ Почта настроена.');
+    console.log('✅ Email настроен.');
 }
 
 const db = new Database('mixora.db');
-
 db.pragma('foreign_keys = ON');
+
 // ВРЕМЕННО: удалить после первого деплоя
 try { db.exec(`DELETE FROM inventory_dates`); } catch(e) {}
 try { db.exec(`DELETE FROM inventory_items`); } catch(e) {}
@@ -81,15 +69,10 @@ try { db.exec(`DELETE FROM users`); } catch(e) {}
 console.log('Все пользователи удалены.');
 
 db.exec(`CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    email TEXT UNIQUE NOT NULL,
-    password TEXT NOT NULL,
-    role TEXT NOT NULL DEFAULT 'bartender',
-    email_verified INTEGER DEFAULT 0,
-    verification_code TEXT,
-    login_attempts INTEGER DEFAULT 0,
-    blocked_until TEXT
+    id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL, password TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'bartender', email_verified INTEGER DEFAULT 0,
+    verification_code TEXT, login_attempts INTEGER DEFAULT 0, blocked_until TEXT
 )`);
 db.exec(`CREATE TABLE IF NOT EXISTS manager_bartenders (id INTEGER PRIMARY KEY AUTOINCREMENT, manager_id INTEGER NOT NULL, bartender_id INTEGER NOT NULL, created_at TEXT DEFAULT '', FOREIGN KEY(manager_id) REFERENCES users(id) ON DELETE CASCADE, FOREIGN KEY(bartender_id) REFERENCES users(id) ON DELETE CASCADE, UNIQUE(manager_id, bartender_id))`);
 db.exec(`CREATE TABLE IF NOT EXISTS bars (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, address TEXT DEFAULT '', type TEXT DEFAULT 'bar', created_by INTEGER, created_at TEXT DEFAULT '', FOREIGN KEY(created_by) REFERENCES users(id) ON DELETE SET NULL)`);
@@ -109,9 +92,8 @@ const DEFAULT_TEMPLATE = [
     { name:'Джин', unit:'л', cat:'alcohol' }, { name:'Ром', unit:'л', cat:'alcohol' },
     { name:'Текила', unit:'л', cat:'alcohol' }, { name:'Апероль', unit:'л', cat:'alcohol' },
     { name:'Вино красное', unit:'л', cat:'wine' }, { name:'Вино белое', unit:'л', cat:'wine' },
-    { name:'Игристое', unit:'л', cat:'wine' },
-    { name:'Пиво светлое', unit:'л', cat:'beer' }, { name:'Пиво тёмное', unit:'л', cat:'beer' },
-    { name:'Кег пивной 30л', unit:'л', cat:'beer' },
+    { name:'Игристое', unit:'л', cat:'wine' }, { name:'Пиво светлое', unit:'л', cat:'beer' },
+    { name:'Пиво тёмное', unit:'л', cat:'beer' }, { name:'Кег пивной 30л', unit:'л', cat:'beer' },
     { name:'Сок апельсиновый', unit:'л', cat:'drinks' }, { name:'Кола', unit:'л', cat:'drinks' },
     { name:'Тоник', unit:'л', cat:'drinks' }, { name:'Вода', unit:'л', cat:'drinks' },
     { name:'Лимоны', unit:'кг', cat:'ingredients' }, { name:'Лайм', unit:'кг', cat:'ingredients' },
@@ -126,7 +108,7 @@ function getBarsForUser(userId, role) {
     return db.prepare(`SELECT DISTINCT b.id,b.name,b.address,b.type,b.created_by,COALESCE(d.last_inventory_date,'Никогда') as last_inventory_date,u.name as created_by_name FROM bars b JOIN user_bars ub ON b.id=ub.bar_id LEFT JOIN inventory_dates d ON b.id=d.bar_id LEFT JOIN users u ON b.created_by=u.id WHERE ub.user_id=? ORDER BY b.name`).all(userId);
 }
 function sendEmail(to, subject, html) {
-    if (!transporter) { console.log(`[EMAIL ОТКЛЮЧЁН] Письмо НЕ отправлено на ${to}`); return false; }
+    if (!transporter) { console.log(`[EMAIL ОТКЛЮЧЁН] ${to}`); return false; }
     transporter.sendMail({ from: `"Mixora" <${process.env.EMAIL_USER}>`, to, subject, html })
         .then(() => console.log(`[EMAIL ОТПРАВЛЕН] ${to}`))
         .catch(e => console.error(`[EMAIL ОШИБКА] ${to}:`, e.message));
@@ -176,14 +158,23 @@ io.on('connection', socket => {
             db.prepare('INSERT INTO users (name, email, password, role, email_verified, verification_code) VALUES (?, ?, ?, ?, 0, ?)').run(escapeHtml(data.name), data.email, hash, role, code);
             console.log(`\n============================================\n  КОД ПОДТВЕРЖДЕНИЯ для ${data.email}: ${code}\n============================================\n`);
             const emailSent = sendEmail(data.email, 'Mixora — Код подтверждения', `<h2>Добро пожаловать в Mixora!</h2><p>Ваш код: <b style="font-size:24px;color:#D4A843;">${code}</b></p>`);
-            socket.emit('verificationRequired', { email: data.email, message: emailSent ? 'Код отправлен на почту.' : 'Код в консоли сервера.' });
+            socket.emit('verificationRequired', { email: data.email });
         } catch (e) { console.error('Ошибка регистрации:', e.message); socket.emit('errorMessage', 'Ошибка регистрации.'); }
+    });
+
+    socket.on('resendCode', data => {
+        const user = db.prepare('SELECT * FROM users WHERE email = ? AND email_verified = 0').get(data.email);
+        if (!user) return socket.emit('errorMessage', 'Пользователь не найден или уже подтверждён.');
+        const newCode = generateCode();
+        db.prepare('UPDATE users SET verification_code = ? WHERE id = ?').run(newCode, user.id);
+        if (transporter) sendEmail(data.email, 'Mixora — Новый код', `<h2>Новый код подтверждения</h2><p>Ваш код: <b style="font-size:24px;color:#D4A843;">${newCode}</b></p>`);
+        console.log(`\n=== НОВЫЙ КОД ДЛЯ ${data.email}: ${newCode} ===\n`);
     });
 
     socket.on('verifyEmail', data => {
         const user = db.prepare('SELECT * FROM users WHERE email = ? AND email_verified = 0').get(data.email);
         if (!user) return socket.emit('errorMessage', 'Не найден или уже подтверждён.');
-        if (user.verification_code !== data.code) return socket.emit('errorMessage', 'Неверный код.');
+        if (user.verification_code !== data.code) return socket.emit('errorMessage', 'Неверный код. Нажмите "Отправить повторно".');
         db.prepare('UPDATE users SET email_verified = 1, verification_code = NULL WHERE id = ?').run(user.id);
         if (user.role === 'bartender') {
             const br = db.prepare("INSERT INTO bars (name,address,type,created_by,created_at) VALUES (?,?,?,?,datetime('now','localtime'))").run('Мой бар', 'Адрес не указан', 'bar', user.id);
@@ -197,15 +188,9 @@ io.on('connection', socket => {
     socket.on('login', data => {
         const user = db.prepare('SELECT * FROM users WHERE email = ?').get(data.email);
         if (!user) return socket.emit('errorMessage', 'Неверный email или пароль.');
-        if (isBlocked(user)) {
-            const mins = Math.ceil((new Date(user.blocked_until + 'Z') - new Date()) / 60000);
-            return socket.emit('errorMessage', `Аккаунт заблокирован. Попробуйте через ${mins} мин.`);
-        }
+        if (isBlocked(user)) { const mins = Math.ceil((new Date(user.blocked_until + 'Z') - new Date()) / 60000); return socket.emit('errorMessage', `Аккаунт заблокирован. Попробуйте через ${mins} мин.`); }
         if (!user.email_verified) return socket.emit('errorMessage', 'Email не подтверждён.');
-        if (data.savedSession && user) {
-            db.prepare('UPDATE users SET login_attempts = 0, blocked_until = NULL WHERE id = ?').run(user.id);
-            return socket.emit('loginSuccess', { user: { id: user.id, name: user.name, email: user.email, role: user.role }, bars: getBarsForUser(user.id, user.role) });
-        }
+        if (data.savedSession && user) { db.prepare('UPDATE users SET login_attempts = 0, blocked_until = NULL WHERE id = ?').run(user.id); return socket.emit('loginSuccess', { user: { id: user.id, name: user.name, email: user.email, role: user.role }, bars: getBarsForUser(user.id, user.role) }); }
         if (!bcrypt.compareSync(data.password, user.password)) {
             const attempts = (user.login_attempts || 0) + 1;
             if (attempts >= 5) { db.prepare("UPDATE users SET login_attempts = ?, blocked_until = datetime('now', '+15 minutes') WHERE id = ?").run(attempts, user.id); return socket.emit('errorMessage', 'Аккаунт заблокирован на 15 минут.'); }
@@ -232,6 +217,4 @@ io.on('connection', socket => {
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, '0.0.0.0', () => {
-    console.log(`\nMixora запущена на http://localhost:${PORT}\n`);
-});
+server.listen(PORT, '0.0.0.0', () => console.log(`Mixora v1.02 запущена на порту ${PORT}`));
