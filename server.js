@@ -45,17 +45,22 @@ app.use('/uploads', (req, res) => res.status(403).send('Доступ запре�
 const upload = multer({ dest: 'uploads/' });
 if (!fs.existsSync('uploads')) fs.mkdirSync('uploads', { recursive: true });
 
+// ========== ПОЧТА (MAIL.RU) ==========
 let transporter = null;
 if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
     console.log('⚠️  EMAIL_USER или EMAIL_PASS не заданы. Коды будут в консоли.');
 } else {
     transporter = nodemailer.createTransport({
-        host: 'smtp.yandex.ru', port: 465, secure: true,
+        host: 'smtp.mail.ru',
+        port: 465,
+        secure: true,
         auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
     });
-    console.log('✅ Email настроен.');
+    console.log('✅ Почта настроена (Mail.ru).');
 }
 
+// ========== БАЗА ДАННЫХ ==========
+try { fs.unlinkSync('mixora.db'); } catch(e) {} // ВРЕМЕННО! Удалить после первого деплоя!
 const db = new Database('mixora.db');
 db.pragma('foreign_keys = ON');
 
@@ -148,7 +153,7 @@ io.on('connection', socket => {
             if (db.prepare('SELECT id FROM users WHERE email = ?').get(data.email)) return socket.emit('errorMessage', 'Пользователь с таким email уже существует.');
             db.prepare('INSERT INTO users (name, email, password, role, email_verified, verification_code) VALUES (?, ?, ?, ?, 0, ?)').run(escapeHtml(data.name), data.email, hash, role, code);
             console.log(`\n============================================\n  КОД ПОДТВЕРЖДЕНИЯ для ${data.email}: ${code}\n============================================\n`);
-            const emailSent = sendEmail(data.email, 'Mixora — Код подтверждения', `<h2>Добро пожаловать в Mixora!</h2><p>Ваш код: <b style="font-size:24px;color:#D4A843;">${code}</b></p>`);
+            sendEmail(data.email, 'Mixora — Код подтверждения', `<h2>Добро пожаловать в Mixora!</h2><p>Ваш код: <b style="font-size:24px;color:#D4A843;">${code}</b></p>`);
             socket.emit('verificationRequired', { email: data.email });
         } catch (e) { console.error('Ошибка регистрации:', e.message); socket.emit('errorMessage', 'Ошибка регистрации.'); }
     });
@@ -158,7 +163,7 @@ io.on('connection', socket => {
         if (!user) return socket.emit('errorMessage', 'Пользователь не найден или уже подтверждён.');
         const newCode = generateCode();
         db.prepare('UPDATE users SET verification_code = ? WHERE id = ?').run(newCode, user.id);
-        if (transporter) sendEmail(data.email, 'Mixora — Новый код', `<h2>Новый код подтверждения</h2><p>Ваш код: <b style="font-size:24px;color:#D4A843;">${newCode}</b></p>`);
+        sendEmail(data.email, 'Mixora — Новый код', `<h2>Новый код подтверждения</h2><p>Ваш код: <b style="font-size:24px;color:#D4A843;">${newCode}</b></p>`);
         console.log(`\n=== НОВЫЙ КОД ДЛЯ ${data.email}: ${newCode} ===\n`);
     });
 
