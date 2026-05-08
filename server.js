@@ -56,12 +56,11 @@ if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
     console.log('✅ Email настроен.');
 }
 
-const db = new Database('mixora.db');
-db.pragma('foreign_keys = ON');
-
 // ВРЕМЕННО: удалить после первого деплоя
 try { fs.unlinkSync('mixora.db'); } catch(e) {}
-console.log('База данных удалена.');
+
+const db = new Database('mixora.db');
+db.pragma('foreign_keys = ON');
 
 db.exec(`CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
