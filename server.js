@@ -45,22 +45,23 @@ app.use('/uploads', (req, res) => res.status(403).send('Доступ запре�
 const upload = multer({ dest: 'uploads/' });
 if (!fs.existsSync('uploads')) fs.mkdirSync('uploads', { recursive: true });
 
-// ========== ПОЧТА (MAIL.RU) ==========
+// ========== ПОЧТА (ЯНДЕКС) ==========
 let transporter = null;
 if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
     console.log('⚠️  EMAIL_USER или EMAIL_PASS не заданы. Коды будут в консоли.');
 } else {
     transporter = nodemailer.createTransport({
-        host: 'smtp.mail.ru',
+        host: 'smtp.yandex.ru',
         port: 465,
         secure: true,
         auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
     });
-    console.log('✅ Почта настроена (Mail.ru).');
+    console.log('✅ Почта настроена (Яндекс).');
 }
 
 // ========== БАЗА ДАННЫХ ==========
-try { fs.unlinkSync('mixora.db'); } catch(e) {} // ВРЕМЕННО! Удалить после первого деплоя!
+// ВРЕМЕННО! Удалить после первого деплоя!
+try { fs.unlinkSync('mixora.db'); } catch(e) {}
 const db = new Database('mixora.db');
 db.pragma('foreign_keys = ON');
 
